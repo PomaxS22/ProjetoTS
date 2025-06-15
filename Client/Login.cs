@@ -176,7 +176,40 @@ namespace Client
 
         private void btnRegister_Click(object sender, EventArgs e)
         {
+            string username = txtUsername.Text.Trim();
+            string password = txtPassword.Text.Trim();
 
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            {
+                MessageBox.Show("Por favor, preencha o usuário e senha para registrar.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (username.Length < 3)
+            {
+                MessageBox.Show("O nome de usuário deve ter pelo menos 3 caracteres.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (password.Length < 3)
+            {
+                MessageBox.Show("A senha deve ter pelo menos 3 caracteres.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Try to register with the server
+            if (RegisterUser(username, password))
+            {
+                MessageBox.Show("Usuário registrado com sucesso! Agora você pode fazer login.", "Sucesso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                // Clear password field for security
+                txtPassword.Clear();
+                txtPassword.Focus();
+            }
+            else
+            {
+                MessageBox.Show("Erro ao registrar usuário. Nome de usuário pode já existir.", "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 }

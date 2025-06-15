@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Client
@@ -25,7 +26,7 @@ namespace Client
 
         // Thread for receiving messages
         private Thread receiveThread;
-        private bool isRunning = false;
+        private volatile bool isRunning = false;
 
         // New constructor that accepts authentication parameters from Login form
         public Client(int userId, string username, TcpClient tcpClient, NetworkStream stream, ProtocolSI protocol)
@@ -45,7 +46,7 @@ namespace Client
             this.Text = $"Chat - {loggedUsername}";
 
             // Username Label
-            labelUserName.Text = loggedUsername;    
+            labelUserName.Text = loggedUsername;
 
             // Start receiving messages
             StartReceiving();
@@ -55,112 +56,184 @@ namespace Client
         private void StartReceiving()
         {
             isRunning = true;
-            receiveThread = new Thread(ReceiveMessages);
-            receiveThread.IsBackground = true;
+            receiveThread = new Thread(ReceiveMessages)
+            {
+                IsBackground = true,
+                Name = $"ReceiveThread_{loggedUsername}"
+            };
             receiveThread.Start();
         }
 
-        // Method to receive messages
+        // Method to receive messages - COMPLETELY ISOLATED VERSION
         private void ReceiveMessages()
         {
             try
             {
-                while (isRunning)
+                while (isRunning && networkStream != null && client != null && client.Connected)
                 {
-                    // Check if data is available
-                    if (networkStream.DataAvailable)
+                    try
                     {
-                        // Read message
-                        networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
-
-                        // Check message type
-                        if (protocolSI.GetCmdType() == ProtocolSICmdType.DATA)
+                        // Check if data is available
+                        if (networkStream.DataAvailable)
                         {
-                            string message = protocolSI.GetStringFromData();
+                            // Read message
+                            byte[] buffer = new byte[protocolSI.Buffer.Length];
+                            int bytesRead = networkStream.Read(buffer, 0, buffer.Length);
 
-                            // Update UI with received message
-                            UpdateChatBox(message);
+                            if (bytesRead > 0)
+                            {
+                                // Copy to protocol buffer
+                                Array.Copy(buffer, protocolSI.Buffer, Math.Min(buffer.Length, protocolSI.Buffer.Length));
 
-                            // Send ACK
-                            byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK);
-                            networkStream.Write(ack, 0, ack.Length);
+                                // Check message type
+                                if (protocolSI.GetCmdType() == ProtocolSICmdType.DATA)
+                                {
+                                    string message = protocolSI.GetStringFromData();
+
+                                    // Update UI with received message - THREAD SAFE
+                                    UpdateChatBoxSafe(message);
+
+                                    // Send ACK
+                                    byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK);
+                                    networkStream.Write(ack, 0, ack.Length);
+                                }
+                            }
                         }
-                    }
 
-                    // Small pause to not overload CPU
-                    Thread.Sleep(10);
+                        // Small pause to not overload CPU
+                        Thread.Sleep(100);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (isRunning) // Only log if we're still supposed to be running
+                        {
+                            Console.WriteLine($"Error in receive thread for {loggedUsername}: {ex.Message}");
+                        }
+                        Thread.Sleep(1000); // Wait a bit before retrying
+                    }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Erro ao receber mensagens: " + ex.Message, "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Console.WriteLine($"Fatal error in receive thread for {loggedUsername}: {ex.Message}");
             }
         }
 
-        // Method to safely update chat box across threads
-        private void UpdateChatBox(string message)
+        // COMPLETELY SAFE: Thread-safe method to update chat box
+        private void UpdateChatBoxSafe(string message)
         {
-            if (txtChatBox.InvokeRequired)
+            try
             {
-                // If we're on another thread, invoke this method on the UI thread
-                txtChatBox.Invoke(new Action<string>(UpdateChatBox), message);
+                if (this.IsDisposed || this.Disposing || !this.IsHandleCreated)
+                    return;
+
+                if (this.InvokeRequired)
+                {
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            if (!this.IsDisposed && txtChatBox != null)
+                            {
+                                txtChatBox.AppendText(message + Environment.NewLine);
+                                txtChatBox.SelectionStart = txtChatBox.Text.Length;
+                                txtChatBox.ScrollToCaret();
+                            }
+                        }
+                        catch { /* Ignore UI update errors */ }
+                    }));
+                }
+                else
+                {
+                    if (txtChatBox != null)
+                    {
+                        txtChatBox.AppendText(message + Environment.NewLine);
+                        txtChatBox.SelectionStart = txtChatBox.Text.Length;
+                        txtChatBox.ScrollToCaret();
+                    }
+                }
             }
-            else
+            catch
             {
-                // We're on the UI thread, can update directly
-                txtChatBox.AppendText(message + Environment.NewLine);
-                // Scroll to the end
-                txtChatBox.SelectionStart = txtChatBox.Text.Length;
-                txtChatBox.ScrollToCaret();
+                // Ignore all errors to prevent crashing
             }
         }
 
-        // Send message button click event
+        // FIRE AND FORGET: Non-blocking send message
         private void buttonSend_Click(object sender, EventArgs e)
         {
-            string msg = textBoxMessage.Text;
+            string msg = textBoxMessage.Text.Trim();
             if (string.IsNullOrWhiteSpace(msg))
                 return;
 
+            // Clear immediately
             textBoxMessage.Clear();
-            byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, msg);
-            networkStream.Write(packet, 0, packet.Length);
 
-            // Wait for ACK
-            while (protocolSI.GetCmdType() != ProtocolSICmdType.ACK)
+            // Send in background - no waiting for ACK
+            Task.Run(() =>
             {
-                networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
-            }
+                try
+                {
+                    if (networkStream != null && client != null && client.Connected)
+                    {
+                        byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, msg);
+                        networkStream.Write(packet, 0, packet.Length);
 
-            // Show sent message in own chat (optional)
-            UpdateChatBox($"Eu: {msg}");
+                        // Show sent message immediately without waiting for ACK
+                        UpdateChatBoxSafe($"Eu: {msg}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Show error if send fails
+                    UpdateChatBoxSafe($"[ERRO] Falha ao enviar: {msg}");
+                    Console.WriteLine($"Send error for {loggedUsername}: {ex.Message}");
+                }
+            });
+
+            // Focus back to message input
+            textBoxMessage.Focus();
         }
 
-        // Method to close client connection
+        // CLEAN: Method to close client connection
         private void CloseClient()
         {
             try
             {
-                // Stop receiving thread
                 isRunning = false;
-                if (receiveThread != null && receiveThread.IsAlive)
+
+                // Close network resources first
+                if (networkStream != null)
                 {
-                    receiveThread.Join(1000); // Wait up to 1 second for thread to finish
+                    try
+                    {
+                        if (client != null && client.Connected)
+                        {
+                            byte[] eot = protocolSI.Make(ProtocolSICmdType.EOT);
+                            networkStream.Write(eot, 0, eot.Length);
+                        }
+                    }
+                    catch { /* Ignore */ }
+
+                    networkStream.Close();
+                    networkStream = null;
                 }
 
-                if (networkStream != null && client != null && client.Connected)
+                if (client != null)
                 {
-                    // Send End of Transmission
-                    byte[] eot = protocolSI.Make(ProtocolSICmdType.EOT);
-                    networkStream.Write(eot, 0, eot.Length);
-                    networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
-                    networkStream.Close();
                     client.Close();
+                    client = null;
+                }
+
+                // Wait for thread to finish
+                if (receiveThread != null && receiveThread.IsAlive)
+                {
+                    receiveThread.Join(1000);
                 }
             }
-            catch (Exception e)
+            catch
             {
-                Console.WriteLine(e.Message);
+                // Ignore cleanup errors
             }
         }
 
@@ -170,11 +243,36 @@ namespace Client
             CloseClient();
         }
 
-        // Quit button click event
-        private void buttonQuit_Click(object sender, EventArgs e)
+        // COMPLETELY ISOLATED: Create new login in separate process
+        private void btnAddUser_Click(object sender, EventArgs e)
         {
-            CloseClient();
-            this.Close();
+            try
+            {
+                // Create new login form in separate thread to avoid interference
+                Thread newLoginThread = new Thread(() =>
+                {
+                    try
+                    {
+                        Application.SetCompatibleTextRenderingDefault(false);
+                        Login newLoginForm = new Login();
+                        Application.Run(newLoginForm);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error creating new login: {ex.Message}");
+                    }
+                })
+                {
+                    IsBackground = false
+                };
+
+                newLoginThread.Start();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Erro ao abrir nova janela de login: " + ex.Message, "Erro",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 }
