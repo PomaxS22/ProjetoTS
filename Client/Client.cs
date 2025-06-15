@@ -21,47 +21,47 @@ namespace Client
         ProtocolSI protocolSI;
         TcpClient client;
 
-        // Simple encryption variables
+        // Variáveis de encriptação simples
         private byte[] aesKey;
         private byte[] aesIV;
 
-        // User information received from Login form
+        // Informações do utilizador recebidas do formulário de Login
         private int loggedUserId = -1;
         private string loggedUsername = null;
 
-        // Thread for receiving messages
+        // Thread para receber mensagens
         private Thread receiveThread;
         private volatile bool isRunning = false;
 
-        // Updated constructor that accepts AES keys
+        // Construtor actualizado que aceita chaves AES
         public Client(int userId, string username, TcpClient tcpClient, NetworkStream stream, ProtocolSI protocol, byte[] aesKeyParam, byte[] aesIVParam)
         {
             InitializeComponent();
 
-            // Set user information
+            // Definir informações do utilizador
             loggedUserId = userId;
             loggedUsername = username;
 
-            // Set network components
+            // Definir componentes de rede
             client = tcpClient;
             networkStream = stream;
             protocolSI = protocol;
 
-            // Set encryption keys
+            // Definir chaves de encriptação
             aesKey = aesKeyParam;
             aesIV = aesIVParam;
 
-            // Update form title with username
+            // Actualizar título do formulário com nome de utilizador
             this.Text = $"Chat Seguro - {loggedUsername}";
 
-            // Username Label
+            // Etiqueta do nome de utilizador
             labelUserName.Text = loggedUsername;
 
-            // Start receiving messages
+            // Iniciar recepção de mensagens
             StartReceiving();
         }
 
-        // Start the message receiving thread
+        // Iniciar a thread de recepção de mensagens
         private void StartReceiving()
         {
             isRunning = true;
@@ -73,7 +73,7 @@ namespace Client
             receiveThread.Start();
         }
 
-        // Method to receive encrypted messages
+        // Método para receber mensagens encriptadas
         private void ReceiveMessages()
         {
             try
@@ -82,63 +82,63 @@ namespace Client
                 {
                     try
                     {
-                        // Check if data is available
+                        // Verificar se há dados disponíveis
                         if (networkStream.DataAvailable)
                         {
-                            // Read message
+                            // Ler mensagem
                             byte[] buffer = new byte[protocolSI.Buffer.Length];
                             int bytesRead = networkStream.Read(buffer, 0, buffer.Length);
 
                             if (bytesRead > 0)
                             {
-                                // Copy to protocol buffer
+                                // Copiar para buffer do protocolo
                                 Array.Copy(buffer, protocolSI.Buffer, Math.Min(buffer.Length, protocolSI.Buffer.Length));
 
-                                // Check message type
+                                // Verificar tipo de mensagem
                                 if (protocolSI.GetCmdType() == ProtocolSICmdType.DATA)
                                 {
                                     try
                                     {
-                                        // Get encrypted message and decrypt it
+                                        // Obter mensagem encriptada e desencriptá-la
                                         string encryptedMessage = protocolSI.GetStringFromData();
                                         string decryptedMessage = DecryptWithAES(encryptedMessage);
 
-                                        // Update UI with decrypted message
+                                        // Actualizar interface com mensagem desencriptada
                                         UpdateChatBoxSafe($"🔐 {decryptedMessage}");
                                     }
                                     catch (Exception decryptEx)
                                     {
-                                        // If decryption fails, show as encrypted
-                                        UpdateChatBoxSafe($"[ENCRYPTED MESSAGE - Error: {decryptEx.Message}]");
+                                        // Se a desencriptação falhar, mostrar como encriptada
+                                        UpdateChatBoxSafe($"[MENSAGEM ENCRIPTADA - Erro: {decryptEx.Message}]");
                                     }
 
-                                    // Send ACK
+                                    // Enviar ACK
                                     byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK);
                                     networkStream.Write(ack, 0, ack.Length);
                                 }
                             }
                         }
 
-                        // Small pause to not overload CPU
+                        // Pequena pausa para não sobrecarregar o CPU
                         Thread.Sleep(100);
                     }
                     catch (Exception ex)
                     {
-                        if (isRunning) // Only log if we're still supposed to be running
+                        if (isRunning) // Apenas registar se ainda devemos estar a correr
                         {
-                            Console.WriteLine($"Error in receive thread for {loggedUsername}: {ex.Message}");
+                            Console.WriteLine($"Erro na thread de recepção para {loggedUsername}: {ex.Message}");
                         }
-                        Thread.Sleep(1000); // Wait a bit before retrying
+                        Thread.Sleep(1000); // Aguardar um pouco antes de tentar novamente
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Fatal error in receive thread for {loggedUsername}: {ex.Message}");
+                Console.WriteLine($"Erro fatal na thread de recepção para {loggedUsername}: {ex.Message}");
             }
         }
 
-        // Thread-safe method to update chat box
+        // Método thread-safe para actualizar caixa de chat
         private void UpdateChatBoxSafe(string message)
         {
             try
@@ -154,21 +154,21 @@ namespace Client
                         {
                             if (!this.IsDisposed && txtChatBox != null)
                             {
-                                // Add timestamp
+                                // Adicionar timestamp
                                 string timestampedMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";
                                 txtChatBox.AppendText(timestampedMessage + Environment.NewLine);
                                 txtChatBox.SelectionStart = txtChatBox.Text.Length;
                                 txtChatBox.ScrollToCaret();
                             }
                         }
-                        catch { /* Ignore UI update errors */ }
+                        catch { /* Ignorar erros de actualização da interface */ }
                     }));
                 }
                 else
                 {
                     if (txtChatBox != null)
                     {
-                        // Add timestamp
+                        // Adicionar timestamp
                         string timestampedMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";
                         txtChatBox.AppendText(timestampedMessage + Environment.NewLine);
                         txtChatBox.SelectionStart = txtChatBox.Text.Length;
@@ -178,52 +178,52 @@ namespace Client
             }
             catch
             {
-                // Ignore all errors to prevent crashing
+                // Ignorar todos os erros para prevenir travamentos
             }
         }
 
-        // Send encrypted message
+        // Enviar mensagem encriptada
         private void buttonSend_Click(object sender, EventArgs e)
         {
             string msg = textBoxMessage.Text.Trim();
             if (string.IsNullOrWhiteSpace(msg))
                 return;
 
-            // Clear immediately
+            // Limpar imediatamente
             textBoxMessage.Clear();
 
-            // Send encrypted message in background
+            // Enviar mensagem encriptada em segundo plano
             Task.Run(() =>
             {
                 try
                 {
                     if (networkStream != null && client != null && client.Connected)
                     {
-                        // Encrypt message with AES
+                        // Encriptar mensagem com AES
                         string encryptedMessage = EncryptWithAES(msg);
 
-                        // Send encrypted message
+                        // Enviar mensagem encriptada
                         byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, encryptedMessage);
                         networkStream.Write(packet, 0, packet.Length);
 
-                        // Show sent message with encryption indicator
+                        // Mostrar mensagem enviada com indicador de encriptação
                         UpdateChatBoxSafe($"Eu: {msg}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    // Show error if send fails
+                    // Mostrar erro se o envio falhar
                     UpdateChatBoxSafe($"[ERRO] Falha ao enviar: {msg} - {ex.Message}");
-                    Console.WriteLine($"Send error for {loggedUsername}: {ex.Message}");
+                    Console.WriteLine($"Erro de envio para {loggedUsername}: {ex.Message}");
                 }
             });
 
-            // Focus back to message input
+            // Focar de volta na entrada de mensagem
             textBoxMessage.Focus();
         }
 
         /// <summary>
-        /// Simple AES encryption for messages
+        /// Encriptação AES simples para mensagens
         /// </summary>
         private string EncryptWithAES(string plainText)
         {
@@ -242,12 +242,12 @@ namespace Client
             }
             catch (Exception ex)
             {
-                throw new Exception($"Encryption failed: {ex.Message}");
+                throw new Exception($"Encriptação falhou: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Simple AES decryption for messages
+        /// Desencriptação AES simples para mensagens
         /// </summary>
         private string DecryptWithAES(string encryptedText)
         {
@@ -266,18 +266,18 @@ namespace Client
             }
             catch (Exception ex)
             {
-                throw new Exception($"Decryption failed: {ex.Message}");
+                throw new Exception($"Desencriptação falhou: {ex.Message}");
             }
         }
 
-        // Method to close client connection
+        // Método para fechar ligação do cliente
         private void CloseClient()
         {
             try
             {
                 isRunning = false;
 
-                // Close network resources first
+                // Fechar recursos de rede primeiro
                 if (networkStream != null)
                 {
                     try
@@ -288,7 +288,7 @@ namespace Client
                             networkStream.Write(eot, 0, eot.Length);
                         }
                     }
-                    catch { /* Ignore */ }
+                    catch { /* Ignorar */ }
 
                     networkStream.Close();
                     networkStream = null;
@@ -300,7 +300,7 @@ namespace Client
                     client = null;
                 }
 
-                // Wait for thread to finish
+                // Aguardar que a thread termine
                 if (receiveThread != null && receiveThread.IsAlive)
                 {
                     receiveThread.Join(1000);
@@ -308,22 +308,22 @@ namespace Client
             }
             catch
             {
-                // Ignore cleanup errors
+                // Ignorar erros de limpeza
             }
         }
 
-        // Form closing event
+        // Evento de fecho do formulário
         private void Client_FormClosing(object sender, FormClosingEventArgs e)
         {
             CloseClient();
         }
 
-        // Create new login (separate process)
+        // Criar novo login (processo separado)
         private void btnAddUser_Click(object sender, EventArgs e)
         {
             try
             {
-                // Create new login form in separate thread to avoid interference
+                // Criar novo formulário de login numa thread separada para evitar interferência
                 Thread newLoginThread = new Thread(() =>
                 {
                     try
@@ -334,7 +334,7 @@ namespace Client
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Error creating new login: {ex.Message}");
+                        Console.WriteLine($"Erro ao criar novo login: {ex.Message}");
                     }
                 })
                 {
@@ -349,5 +349,195 @@ namespace Client
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+        // Adiciona estes métodos à tua classe Client.cs
+
+        #region Efeitos Visuais e Eventos
+
+        /// <summary>
+        /// Efeito visual quando o campo de mensagem ganha foco
+        /// </summary>
+        private void textBoxMessage_Enter(object sender, EventArgs e)
+        {
+            TextBox txt = sender as TextBox;
+            if (txt != null)
+            {
+                txt.BackColor = Color.White; // Muda para branco quando focado
+
+                // Adicionar uma borda visual simulada (opcional)
+                txt.Padding = new Padding(5);
+            }
+        }
+
+        /// <summary>
+        /// Efeito visual quando o campo de mensagem perde foco
+        /// </summary>
+        private void textBoxMessage_Leave(object sender, EventArgs e)
+        {
+            TextBox txt = sender as TextBox;
+            if (txt != null)
+            {
+                txt.BackColor = Color.FromArgb(248, 249, 250); // Volta ao cinza claro
+                txt.Padding = new Padding(0);
+            }
+        }
+
+        /// <summary>
+        /// Permite enviar mensagem pressionando Enter
+        /// </summary>
+        private void textBoxMessage_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (e.KeyChar == (char)13) // Enter key
+            {
+                e.Handled = true; // Previne o "beep" do sistema
+
+                // Verificar se não é Shift+Enter (para quebra de linha)
+                if (!ModifierKeys.HasFlag(Keys.Shift))
+                {
+                    // Enviar a mensagem
+                    buttonSend_Click(sender, e);
+                }
+                else
+                {
+                    // Permitir quebra de linha com Shift+Enter
+                    textBoxMessage.AppendText(Environment.NewLine);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Atualiza o indicador de status online/offline
+        /// </summary>
+        private void UpdateConnectionStatus(bool isConnected)
+        {
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new Action(() => UpdateConnectionStatus(isConnected)));
+                return;
+            }
+
+            if (lblOnlineIndicator != null)
+            {
+                if (isConnected)
+                {
+                    lblOnlineIndicator.Text = "🟢 Conectado";
+                    lblOnlineIndicator.ForeColor = Color.FromArgb(40, 167, 69); // Verde
+                }
+                else
+                {
+                    lblOnlineIndicator.Text = "🔴 Desconectado";
+                    lblOnlineIndicator.ForeColor = Color.FromArgb(220, 53, 69); // Vermelho
+                }
+            }
+        }
+
+        /// <summary>
+        /// Atualiza o título da janela com informações do usuário
+        /// </summary>
+        private void UpdateWindowTitle()
+        {
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new Action(UpdateWindowTitle));
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(loggedUsername))
+            {
+                this.Text = $"🔐 Chat Seguro - {loggedUsername}";
+            }
+            else
+            {
+                this.Text = "🔐 Chat Seguro";
+            }
+        }
+
+        /// <summary>
+        /// Adiciona animação sutil ao botão de enviar
+        /// </summary>
+        private void AnimateSendButton()
+        {
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new Action(AnimateSendButton));
+                return;
+            }
+
+            // Simular feedback visual do envio
+            var originalColor = buttonSend.BackColor;
+            buttonSend.BackColor = Color.FromArgb(40, 167, 69); // Verde temporário
+            buttonSend.Text = "✅ Enviado";
+
+            // Timer para voltar ao normal
+            var timer = new System.Windows.Forms.Timer();
+            timer.Interval = 500; // 500ms
+            timer.Tick += (s, e) =>
+            {
+                buttonSend.BackColor = originalColor;
+                buttonSend.Text = "📤 Enviar";
+                timer.Stop();
+                timer.Dispose();
+            };
+            timer.Start();
+        }
+
+        #endregion
+
+        #region Métodos Auxiliares para UI
+
+        /// <summary>
+        /// Limpa o campo de mensagem com efeito
+        /// </summary>
+        private void ClearMessageField()
+        {
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new Action(ClearMessageField));
+                return;
+            }
+
+            textBoxMessage.Clear();
+            textBoxMessage.Focus(); // Mantém o foco no campo
+        }
+
+        /// <summary>
+        /// Adiciona mensagem ao chat com formatação melhorada
+        /// </summary>
+        private void AddMessageToChat(string message, bool isSystemMessage = false)
+        {
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new Action(() => AddMessageToChat(message, isSystemMessage)));
+                return;
+            }
+
+            if (txtChatBox != null)
+            {
+                // Limpar mensagem de boas-vindas na primeira mensagem
+                if (txtChatBox.Text.Contains("Bem-vindo ao chat seguro"))
+                {
+                    txtChatBox.Clear();
+                }
+
+                string timestamp = DateTime.Now.ToString("HH:mm:ss");
+                string formattedMessage;
+
+                if (isSystemMessage)
+                {
+                    formattedMessage = $"[{timestamp}] {message}";
+                }
+                else
+                {
+                    formattedMessage = $"[{timestamp}] {message}";
+                }
+
+                txtChatBox.AppendText(formattedMessage + Environment.NewLine);
+                txtChatBox.SelectionStart = txtChatBox.Text.Length;
+                txtChatBox.ScrollToCaret();
+            }
+        }
+
+        #endregion
+
     }
 }

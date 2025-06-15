@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Windows.Forms;
 using System.Security.Cryptography;
 using System.Text;
+using System.Drawing;
 
 namespace Client
 {
@@ -15,12 +16,12 @@ namespace Client
         ProtocolSI protocolSI;
         TcpClient client;
 
-        // Simple encryption variables
+        // Variáveis de encriptação simples
         private RSACryptoServiceProvider rsa;
         private byte[] aesKey;
         private byte[] aesIV;
 
-        // Variables to store logged user info
+        // Variáveis para armazenar informações do utilizador autenticado
         private int loggedUserId = -1;
         private string loggedUsername = null;
 
@@ -28,7 +29,7 @@ namespace Client
         {
             InitializeComponent();
 
-            // Generate RSA keys (simple)
+            // Gerar chaves RSA (simples)
             rsa = new RSACryptoServiceProvider(2048);
         }
 
@@ -39,14 +40,14 @@ namespace Client
 
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
             {
-                MessageBox.Show("Por favor, preencha o usuário e senha.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Por favor, preencha o utilizador e palavra-passe.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            // Try to authenticate with encryption
+            // Tentar autenticar com encriptação
             if (AuthenticateUserWithEncryption(username, password))
             {
-                // Login successful - open main client form with encryption
+                // Login bem-sucedido - abrir formulário principal do cliente com encriptação
                 Client mainForm = new Client(loggedUserId, loggedUsername, client, networkStream, protocolSI, aesKey, aesIV);
 
                 this.Hide();
@@ -55,7 +56,7 @@ namespace Client
             }
             else
             {
-                MessageBox.Show("Usuário ou senha incorretos.", "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Utilizador ou palavra-passe incorrectos.", "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -66,66 +67,66 @@ namespace Client
 
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
             {
-                MessageBox.Show("Por favor, preencha o usuário e senha para registrar.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Por favor, preencha o utilizador e palavra-passe para registar.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             if (username.Length < 3)
             {
-                MessageBox.Show("O nome de usuário deve ter pelo menos 3 caracteres.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("O nome de utilizador deve ter pelo menos 3 caracteres.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             if (password.Length < 3)
             {
-                MessageBox.Show("A senha deve ter pelo menos 3 caracteres.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("A palavra-passe deve ter pelo menos 3 caracteres.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            // Try to register with encryption
+            // Tentar registar com encriptação
             if (RegisterUserWithEncryption(username, password))
             {
-                MessageBox.Show("Usuário registrado com sucesso! Agora você pode fazer login.", "Sucesso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("Utilizador registado com sucesso! Agora pode fazer login.", "Sucesso", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 txtPassword.Clear();
                 txtPassword.Focus();
             }
             else
             {
-                MessageBox.Show("Erro ao registrar usuário. Nome de usuário pode já existir.", "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Erro ao registar utilizador. Nome de utilizador pode já existir.", "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
         /// <summary>
-        /// Simple encryption: Authenticate with RSA+AES
+        /// Encriptação simples: Autenticar com RSA+AES
         /// </summary>
         private bool AuthenticateUserWithEncryption(string username, string password)
         {
             try
             {
-                // Step 1: Connect to server
+                // Passo 1: Conectar ao servidor
                 ConnectToServer();
 
-                // Step 2: Exchange keys (RSA + AES)
+                // Passo 2: Trocar chaves (RSA + AES)
                 if (!ExchangeKeysSimple())
                 {
                     MessageBox.Show("Falha na troca de chaves.", "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
 
-                // Step 3: Encrypt credentials and send
+                // Passo 3: Encriptar credenciais e enviar
                 string authData = $"{username}:{password}";
                 string encryptedAuth = EncryptWithAES(authData);
 
                 byte[] packet = protocolSI.Make(ProtocolSICmdType.USER_OPTION_1, encryptedAuth);
                 networkStream.Write(packet, 0, packet.Length);
 
-                // Step 4: Wait for response
+                // Passo 4: Aguardar resposta
                 networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
 
                 if (protocolSI.GetCmdType() == ProtocolSICmdType.USER_OPTION_2)
                 {
-                    // Decrypt response
+                    // Desencriptar resposta
                     string encryptedResponse = protocolSI.GetStringFromData();
                     string userData = DecryptWithAES(encryptedResponse);
 
@@ -148,7 +149,7 @@ namespace Client
         }
 
         /// <summary>
-        /// Simple encryption: Register with RSA+AES
+        /// Encriptação simples: Registar com RSA+AES
         /// </summary>
         private bool RegisterUserWithEncryption(string username, string password)
         {
@@ -161,7 +162,7 @@ namespace Client
 
             try
             {
-                // Create separate connection for registration
+                // Criar ligação separada para registo
                 IPEndPoint endpoint = new IPEndPoint(IPAddress.Loopback, PORT);
                 registerClient = new TcpClient();
                 registerClient.Connect(endpoint);
@@ -169,20 +170,20 @@ namespace Client
                 registerProtocol = new ProtocolSI();
                 registerRSA = new RSACryptoServiceProvider(2048);
 
-                // Exchange keys for registration
+                // Trocar chaves para registo
                 if (!ExchangeKeysForRegistration(registerStream, registerProtocol, registerRSA, out regAESKey, out regAESIV))
                 {
                     return false;
                 }
 
-                // Encrypt registration data
+                // Encriptar dados de registo
                 string regData = $"{username}:{password}";
                 string encryptedRegData = EncryptWithAESKeys(regData, regAESKey, regAESIV);
 
                 byte[] packet = registerProtocol.Make(ProtocolSICmdType.USER_OPTION_3, encryptedRegData);
                 registerStream.Write(packet, 0, packet.Length);
 
-                // Wait for response
+                // Aguardar resposta
                 registerStream.Read(registerProtocol.Buffer, 0, registerProtocol.Buffer.Length);
 
                 if (registerProtocol.GetCmdType() == ProtocolSICmdType.USER_OPTION_4)
@@ -196,12 +197,12 @@ namespace Client
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Erro ao registrar: " + ex.Message, "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Erro ao registar: " + ex.Message, "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
             finally
             {
-                // Cleanup
+                // Limpeza
                 try
                 {
                     if (registerStream != null)
@@ -214,41 +215,41 @@ namespace Client
                     registerClient?.Close();
                     registerRSA?.Dispose();
                 }
-                catch { /* Ignore cleanup errors */ }
+                catch { /* Ignorar erros de limpeza */ }
             }
         }
 
         /// <summary>
-        /// Simple key exchange: Send RSA public key, receive encrypted AES key
+        /// Troca de chaves simples: Enviar chave pública RSA, receber chave AES encriptada
         /// </summary>
         private bool ExchangeKeysSimple()
         {
             try
             {
-                // Send RSA public key to server
-                string publicKeyXml = rsa.ToXmlString(false); // false = public key only
+                // Enviar chave pública RSA para o servidor
+                string publicKeyXml = rsa.ToXmlString(false); // false = apenas chave pública
                 byte[] keyPacket = protocolSI.Make(ProtocolSICmdType.DATA, "KEY_EXCHANGE:" + publicKeyXml);
                 networkStream.Write(keyPacket, 0, keyPacket.Length);
 
-                // Wait for encrypted AES key from server
+                // Aguardar chave AES encriptada do servidor
                 networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
 
                 if (protocolSI.GetCmdType() == ProtocolSICmdType.ACK)
                 {
-                    // Get encrypted AES key and decrypt it
+                    // Obter chave AES encriptada e desencriptá-la
                     string encryptedAESKeyBase64 = protocolSI.GetStringFromData();
                     byte[] encryptedAESKey = Convert.FromBase64String(encryptedAESKeyBase64);
 
-                    // Decrypt with our RSA private key
+                    // Desencriptar com a nossa chave privada RSA
                     byte[] decryptedData = rsa.Decrypt(encryptedAESKey, false);
 
-                    // Split into key and IV (first 32 bytes = key, next 16 bytes = IV)
+                    // Dividir em chave e IV (primeiros 32 bytes = chave, próximos 16 bytes = IV)
                     aesKey = new byte[32];
                     aesIV = new byte[16];
                     Array.Copy(decryptedData, 0, aesKey, 0, 32);
                     Array.Copy(decryptedData, 32, aesIV, 0, 16);
 
-                    Console.WriteLine("🔐 Chaves AES recebidas e descriptografadas!");
+                    Console.WriteLine("🔐 Chaves AES recebidas e desencriptadas!");
                     return true;
                 }
 
@@ -262,7 +263,7 @@ namespace Client
         }
 
         /// <summary>
-        /// Key exchange for registration (separate connection)
+        /// Troca de chaves para registo (ligação separada)
         /// </summary>
         private bool ExchangeKeysForRegistration(NetworkStream stream, ProtocolSI protocol, RSACryptoServiceProvider rsaProvider, out byte[] key, out byte[] iv)
         {
@@ -271,12 +272,12 @@ namespace Client
 
             try
             {
-                // Send RSA public key
+                // Enviar chave pública RSA
                 string publicKeyXml = rsaProvider.ToXmlString(false);
                 byte[] keyPacket = protocol.Make(ProtocolSICmdType.DATA, "KEY_EXCHANGE:" + publicKeyXml);
                 stream.Write(keyPacket, 0, keyPacket.Length);
 
-                // Wait for encrypted AES key
+                // Aguardar chave AES encriptada
                 stream.Read(protocol.Buffer, 0, protocol.Buffer.Length);
 
                 if (protocol.GetCmdType() == ProtocolSICmdType.ACK)
@@ -284,10 +285,10 @@ namespace Client
                     string encryptedAESKeyBase64 = protocol.GetStringFromData();
                     byte[] encryptedAESKey = Convert.FromBase64String(encryptedAESKeyBase64);
 
-                    // Decrypt with RSA private key
+                    // Desencriptar com chave privada RSA
                     byte[] decryptedData = rsaProvider.Decrypt(encryptedAESKey, false);
 
-                    // Split into key and IV
+                    // Dividir em chave e IV
                     key = new byte[32];
                     iv = new byte[16];
                     Array.Copy(decryptedData, 0, key, 0, 32);
@@ -305,7 +306,7 @@ namespace Client
         }
 
         /// <summary>
-        /// Simple AES encryption
+        /// Encriptação AES simples
         /// </summary>
         private string EncryptWithAES(string plainText)
         {
@@ -322,7 +323,7 @@ namespace Client
         }
 
         /// <summary>
-        /// Simple AES decryption
+        /// Desencriptação AES simples
         /// </summary>
         private string DecryptWithAES(string encryptedText)
         {
@@ -339,7 +340,7 @@ namespace Client
         }
 
         /// <summary>
-        /// AES encryption with specific keys (for registration)
+        /// Encriptação AES com chaves específicas (para registo)
         /// </summary>
         private string EncryptWithAESKeys(string plainText, byte[] key, byte[] iv)
         {
@@ -356,7 +357,7 @@ namespace Client
         }
 
         /// <summary>
-        /// AES decryption with specific keys (for registration)
+        /// Desencriptação AES com chaves específicas (para registo)
         /// </summary>
         private string DecryptWithAESKeys(string encryptedText, byte[] key, byte[] iv)
         {
@@ -373,7 +374,7 @@ namespace Client
         }
 
         /// <summary>
-        /// Connect to server
+        /// Conectar ao servidor
         /// </summary>
         private void ConnectToServer()
         {
@@ -391,5 +392,49 @@ namespace Client
                 throw;
             }
         }
+
+        // Adiciona estes métodos à tua classe Login.cs - AI MADE
+
+        #region Efeitos de Foco nos TextBoxes
+
+        private void txtUsername_Enter(object sender, EventArgs e)
+        {
+            TextBox txt = sender as TextBox;
+            if (txt != null)
+            {
+                txt.BackColor = Color.FromArgb(255, 255, 255); // Branco quando focado
+            }
+        }
+
+        private void txtUsername_Leave(object sender, EventArgs e)
+        {
+            TextBox txt = sender as TextBox;
+            if (txt != null)
+            {
+                txt.BackColor = Color.FromArgb(248, 249, 250); // Cinza claro quando não focado
+            }
+        }
+
+        private void txtPassword_Enter(object sender, EventArgs e)
+        {
+            TextBox txt = sender as TextBox;
+            if (txt != null)
+            {
+                txt.BackColor = Color.FromArgb(255, 255, 255); // Branco quando focado
+            }
+        }
+
+        private void txtPassword_Leave(object sender, EventArgs e)
+        {
+            TextBox txt = sender as TextBox;
+            if (txt != null)
+            {
+                txt.BackColor = Color.FromArgb(248, 249, 250); // Cinza claro quando não focado
+            }
+        }
+
+        #endregion
+
     }
+
 }

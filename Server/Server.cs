@@ -18,19 +18,19 @@ namespace Server
     {
         private const int PORT = 10000;
 
-        // Teacher's constants for secure password hashing
+        // Constantes para hash segura de palavras-passe
         private const int SALTSIZE = 8;
         private const int NUMBER_OF_ITERATIONS = 50000;
 
-        // Sistema de Logging
+        // Sistema de registo
         private static readonly string LOG_FILE_PATH = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "server_secure_log.txt");
         private static readonly object logLock = new object();
 
-        // Lista estática para armazenar os handlers de cliente
+        // Lista estática para armazenar os gestores de cliente
         private static readonly List<ClientHandler> connectedClients = new List<ClientHandler>();
 
         /// <summary>
-        /// Escreve entrada no log com timestamp e categoria
+        /// Escreve entrada no registo com timestamp e categoria
         /// </summary>
         public static void WriteLog(string message, string category = "INFO")
         {
@@ -41,21 +41,21 @@ namespace Server
                     string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
                     string logEntry = $"[{timestamp}] [{category}] {message}";
 
-                    // Escrever no arquivo
+                    // Escrever no ficheiro
                     File.AppendAllText(LOG_FILE_PATH, logEntry + Environment.NewLine);
 
-                    // Também escrever no console
+                    // Também escrever na consola
                     Console.WriteLine(logEntry);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Erro ao escrever log: {ex.Message}");
+                Console.WriteLine($"Erro ao escrever registo: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Log detalhado de dados processados (para debugging)
+        /// Registo detalhado de dados processados (para depuração)
         /// </summary>
         public static void WriteDetailedLog(string operation, string details, string category = "DATA")
         {
@@ -63,7 +63,7 @@ namespace Server
         }
 
         /// <summary>
-        /// Log de erro com stack trace
+        /// Registo de erro com stack trace
         /// </summary>
         public static void WriteErrorLog(string message, Exception ex)
         {
@@ -81,7 +81,7 @@ namespace Server
         }
 
         /// <summary>
-        /// Log de segurança/criptografia
+        /// Registo de segurança/criptografia
         /// </summary>
         public static void WriteSecurityLog(string operation, string details, int clientId = -1)
         {
@@ -90,11 +90,11 @@ namespace Server
         }
 
         /// <summary>
-        /// TEACHER'S METHOD: Generate cryptographically secure salt
+        /// Gerar salt criptograficamente seguro
         /// </summary>
         public static byte[] GenerateSalt()
         {
-            //Generate a cryptographic random number.
+            // Gerar um número aleatório criptográfico
             RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider();
             byte[] buff = new byte[SALTSIZE];
             rng.GetBytes(buff);
@@ -103,18 +103,18 @@ namespace Server
         }
 
         /// <summary>
-        /// TEACHER'S METHOD: Generate salted hash using PBKDF2
+        /// Gerar hash salgada usando PBKDF2
         /// </summary>
         public static byte[] GenerateSaltedHash(string password, byte[] salt)
         {
             Rfc2898DeriveBytes rfc2898 = new Rfc2898DeriveBytes(password, salt, NUMBER_OF_ITERATIONS);
-            byte[] hash = rfc2898.GetBytes(32); // 256-bit hash
-            WriteSecurityLog("Hash Generated", $"Hash PBKDF2 gerado com {NUMBER_OF_ITERATIONS} iterações, tamanho: {hash.Length * 8} bits");
+            byte[] hash = rfc2898.GetBytes(32); // hash de 256-bit
+            WriteSecurityLog("Hash Generated", $"Hash PBKDF2 gerada com {NUMBER_OF_ITERATIONS} iterações, tamanho: {hash.Length * 8} bits");
             return hash;
         }
 
         /// <summary>
-        /// TEACHER'S METHOD: Verify password against stored hash and salt
+        /// Verificar palavra-passe contra hash e salt armazenadas
         /// </summary>
         public static bool VerifyPassword(string password, byte[] storedHash, byte[] storedSalt)
         {
@@ -122,12 +122,12 @@ namespace Server
             {
                 byte[] computedHash = GenerateSaltedHash(password, storedSalt);
                 bool isValid = storedHash.SequenceEqual(computedHash);
-                WriteSecurityLog("Password Verification", $"Resultado: {(isValid ? "SUCCESS" : "FAILED")}");
+                WriteSecurityLog("Password Verification", $"Resultado: {(isValid ? "SUCESSO" : "FALHADO")}");
                 return isValid;
             }
             catch (Exception ex)
             {
-                WriteErrorLog("Erro na verificação de senha", ex);
+                WriteErrorLog("Erro na verificação de palavra-passe", ex);
                 return false;
             }
         }
@@ -157,7 +157,7 @@ namespace Server
         {
             lock (connectedClients)
             {
-                WriteLog($"Broadcasting para {connectedClients.Count} clientes (exceto {excludeClientId}): {message}", "BROADCAST");
+                WriteLog($"Broadcasting para {connectedClients.Count} clientes (excepto {excludeClientId}): {message}", "BROADCAST");
 
                 foreach (var client in connectedClients)
                 {
@@ -174,41 +174,41 @@ namespace Server
             try
             {
                 WriteLog("=== INICIANDO SERVIDOR SEGURO ===", "STARTUP");
-                WriteLog("🔐 Sistema de chat seguro com logging iniciando...", "STARTUP");
+                WriteLog("🔐 Sistema de chat seguro com registo a iniciar...", "STARTUP");
 
-                // Log de informações do sistema
+                // Registo de informações do sistema
                 WriteLog($"Versão .NET Framework: {Environment.Version}", "SYSTEM");
-                WriteLog($"Diretório atual: {AppDomain.CurrentDomain.BaseDirectory}", "SYSTEM");
-                WriteLog($"Log será salvo em: {LOG_FILE_PATH}", "SYSTEM");
+                WriteLog($"Directório actual: {AppDomain.CurrentDomain.BaseDirectory}", "SYSTEM");
+                WriteLog($"Registo será guardado em: {LOG_FILE_PATH}", "SYSTEM");
                 WriteSecurityLog("Sistema Iniciado", $"Configurações de segurança: SALTSIZE={SALTSIZE}, ITERATIONS={NUMBER_OF_ITERATIONS}");
 
-                // Configurar o diretório de dados
+                // Configurar o directório de dados
                 AppDomain.CurrentDomain.SetData("DataDirectory",
                     System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "App_Data"));
 
-                // Criar o diretório se não existir
+                // Criar o directório se não existir
                 string dataDir = AppDomain.CurrentDomain.GetData("DataDirectory").ToString();
                 if (!System.IO.Directory.Exists(dataDir))
                 {
                     System.IO.Directory.CreateDirectory(dataDir);
-                    WriteLog($"Diretório App_Data criado em: {dataDir}", "SETUP");
+                    WriteLog($"Directório App_Data criado em: {dataDir}", "SETUP");
                 }
                 else
                 {
-                    WriteLog($"Diretório App_Data já existe: {dataDir}", "SETUP");
+                    WriteLog($"Directório App_Data já existe: {dataDir}", "SETUP");
                 }
 
-                // Configurar a inicialização do base de dados
+                // Configurar a inicialização da base de dados
                 Database.SetInitializer(new CreateDatabaseIfNotExists<ApplicationDbContext>());
 
-                // Inicializar e garantir que o base de dados existe
+                // Inicializar e garantir que a base de dados existe
                 using (var dbContext = new ApplicationDbContext())
                 {
-                    WriteLog("Verificando/criando base de dados...", "DATABASE");
+                    WriteLog("A verificar/criar base de dados...", "DATABASE");
                     dbContext.Database.CreateIfNotExists();
                     WriteLog("Base de dados verificada com sucesso", "DATABASE");
 
-                    // Verificar users existentes
+                    // Verificar utilizadores existentes
                     int userCount = dbContext.Users.Count();
                     if (userCount == 0)
                     {
@@ -221,20 +221,20 @@ namespace Server
 
                     IPEndPoint endpoint = new IPEndPoint(IPAddress.Any, PORT);
                     TcpListener listener = new TcpListener(endpoint);
-                    WriteLog($"Iniciando listener na porta {PORT}", "NETWORK");
+                    WriteLog($"A iniciar listener na porta {PORT}", "NETWORK");
                     listener.Start();
-                    WriteLog("🔐 SERVIDOR SEGURO PRONTO - Aguardando conexões...", "STARTUP");
+                    WriteLog("🔐 SERVIDOR SEGURO PRONTO - A aguardar ligações...", "STARTUP");
 
                     int clientCounter = 0;
 
                     while (true)
                     {
-                        WriteLog("Aguardando conexão de cliente...", "NETWORK");
+                        WriteLog("A aguardar ligação de cliente...", "NETWORK");
                         TcpClient client = listener.AcceptTcpClient();
                         clientCounter++;
 
-                        string clientEndpoint = client.Client.RemoteEndPoint?.ToString() ?? "Unknown";
-                        WriteLog($"Cliente {clientCounter} conectado de {clientEndpoint}", "CONNECTION");
+                        string clientEndpoint = client.Client.RemoteEndPoint?.ToString() ?? "Desconhecido";
+                        WriteLog($"Cliente {clientCounter} ligado de {clientEndpoint}", "CONNECTION");
 
                         ClientHandler clientHandler = new ClientHandler(client, clientCounter);
                         clientHandler.Handle();
@@ -247,33 +247,33 @@ namespace Server
             }
             finally
             {
-                WriteLog("=== SERVIDOR SEGURO ENCERRANDO ===", "SHUTDOWN");
-                WriteLog("Pressione qualquer tecla para sair...", "SHUTDOWN");
+                WriteLog("=== SERVIDOR SEGURO A ENCERRAR ===", "SHUTDOWN");
+                WriteLog("Prima qualquer tecla para sair...", "SHUTDOWN");
                 Console.ReadKey();
             }
         }
 
         /// <summary>
-        /// Create secure user using teacher's PBKDF2 method
+        /// Criar utilizador seguro usando método PBKDF2
         /// </summary>
         private static void CreateSecureUser(ApplicationDbContext dbContext, string username, string password)
         {
-            WriteLog($"Criando usuário seguro: {username}", "USER_CREATION");
+            WriteLog($"A criar utilizador seguro: {username}", "USER_CREATION");
 
             byte[] salt = GenerateSalt();
             byte[] hash = GenerateSaltedHash(password, salt);
 
-            // Store as Base64 strings temporarily (until User model is updated to byte[])
+            // Armazenar como strings Base64 temporariamente (até o modelo User ser actualizado para byte[])
             string hashBase64 = Convert.ToBase64String(hash);
             string saltBase64 = Convert.ToBase64String(salt);
 
             dbContext.Users.Add(new User
             {
                 Username = username,
-                Password = $"{hashBase64}:{saltBase64}" // Format: hash:salt
+                Password = $"{hashBase64}:{saltBase64}" // Formato: hash:salt
             });
 
-            WriteSecurityLog("User Created", $"Usuario {username} criado com hash seguro ({hash.Length * 8} bits)");
+            WriteSecurityLog("User Created", $"Utilizador {username} criado com hash segura ({hash.Length * 8} bits)");
         }
     }
 
@@ -281,15 +281,15 @@ namespace Server
     {
         private TcpClient client;
         private int clientID;
-        private int _userId = -1; // ID do user logado
-        private string _username = null; // Nome do user logado
+        private int _userId = -1; // ID do utilizador autenticado
+        private string _username = null; // Nome do utilizador autenticado
 
-        // Simple encryption variables
+        // Variáveis de encriptação simples
         private byte[] aesKey;
         private byte[] aesIV;
         private bool isEncryptionEstablished = false;
 
-        // Propriedade pública para acessar o ID do cliente
+        // Propriedade pública para aceder ao ID do cliente
         public int ClientID { get { return clientID; } }
 
         public ClientHandler(TcpClient client, int clientID)
@@ -297,10 +297,10 @@ namespace Server
             this.client = client;
             this.clientID = clientID;
 
-            // Log da criação do handler
+            // Registo da criação do gestor
             Server.WriteLog($"ClientHandler criado para cliente {clientID}", "CLIENT_HANDLER");
 
-            // Adicionar este cliente à lista de clientes conectados
+            // Adicionar este cliente à lista de clientes ligados
             Server.AddClient(this);
         }
 
@@ -314,7 +314,7 @@ namespace Server
 
                 if (isEncryptionEstablished)
                 {
-                    // Send encrypted message
+                    // Enviar mensagem encriptada
                     string encryptedMessage = EncryptWithAES(message);
                     byte[] packet = ps.Make(ProtocolSICmdType.DATA, encryptedMessage);
                     ns.Write(packet, 0, packet.Length);
@@ -322,7 +322,7 @@ namespace Server
                 }
                 else
                 {
-                    // Send plain message (for non-encrypted clients)
+                    // Enviar mensagem simples (para clientes não encriptados)
                     byte[] packet = ps.Make(ProtocolSICmdType.DATA, message);
                     ns.Write(packet, 0, packet.Length);
                     Server.WriteDetailedLog($"Mensagem simples enviada para cliente {clientID}", $"Conteúdo: {message}, Tamanho: {packet.Length} bytes", "SEND_PLAIN");
@@ -335,22 +335,22 @@ namespace Server
         }
 
         /// <summary>
-        /// Simple: Generate AES key and IV, encrypt with client's RSA public key
+        /// Simples: Gerar chave e IV AES, encriptar com chave pública RSA do cliente
         /// </summary>
         private byte[] GenerateAndEncryptAESKey(string clientPublicKeyXml)
         {
             try
             {
-                Server.WriteSecurityLog("Key Generation Started", "Gerando chave AES para troca segura", clientID);
+                Server.WriteSecurityLog("Key Generation Started", "A gerar chave AES para troca segura", clientID);
 
-                // Generate AES key and IV
+                // Gerar chave e IV AES
                 using (AesCryptoServiceProvider aes = new AesCryptoServiceProvider())
                 {
-                    aes.KeySize = 256; // 256-bit key
+                    aes.KeySize = 256; // chave de 256-bit
                     aes.GenerateKey();
                     aes.GenerateIV();
 
-                    // Store for this client
+                    // Armazenar para este cliente
                     aesKey = new byte[aes.Key.Length];
                     aesIV = new byte[aes.IV.Length];
                     Array.Copy(aes.Key, aesKey, aes.Key.Length);
@@ -358,12 +358,12 @@ namespace Server
 
                     Server.WriteSecurityLog("AES Key Generated", $"Chave: {aesKey.Length * 8} bits, IV: {aesIV.Length * 8} bits", clientID);
 
-                    // Combine key + IV for encryption
+                    // Combinar chave + IV para encriptação
                     byte[] combined = new byte[aesKey.Length + aesIV.Length];
                     Array.Copy(aesKey, 0, combined, 0, aesKey.Length);
                     Array.Copy(aesIV, 0, combined, aesKey.Length, aesIV.Length);
 
-                    // Encrypt with client's RSA public key
+                    // Encriptar com chave pública RSA do cliente
                     using (RSACryptoServiceProvider rsa = new RSACryptoServiceProvider())
                     {
                         rsa.FromXmlString(clientPublicKeyXml);
@@ -376,12 +376,12 @@ namespace Server
             catch (Exception ex)
             {
                 Server.WriteErrorLog($"Falha ao gerar chave AES encriptada para cliente {clientID}", ex);
-                throw new Exception($"Failed to generate encrypted AES key: {ex.Message}");
+                throw new Exception($"Falhou ao gerar chave AES encriptada: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Simple AES encryption
+        /// Encriptação AES simples
         /// </summary>
         private string EncryptWithAES(string plainText)
         {
@@ -404,12 +404,12 @@ namespace Server
             catch (Exception ex)
             {
                 Server.WriteErrorLog($"Falha na encriptação para cliente {clientID}", ex);
-                throw new Exception($"Encryption failed: {ex.Message}");
+                throw new Exception($"Encriptação falhou: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Simple AES decryption
+        /// Desencriptação AES simples
         /// </summary>
         private string DecryptWithAES(string encryptedText)
         {
@@ -432,46 +432,46 @@ namespace Server
             catch (Exception ex)
             {
                 Server.WriteErrorLog($"Falha na desencriptação do cliente {clientID}", ex);
-                throw new Exception($"Decryption failed: {ex.Message}");
+                throw new Exception($"Desencriptação falhou: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// TEACHER'S METHOD: Verify user password using secure hash comparison
+        /// Verificar palavra-passe do utilizador usando comparação de hash segura
         /// </summary>
         private bool VerifyUserPassword(User user, string inputPassword)
         {
             try
             {
-                Server.WriteLog($"Verificando senha para usuário {user.Username}", "AUTH_VERIFY");
+                Server.WriteLog($"A verificar palavra-passe para utilizador {user.Username}", "AUTH_VERIFY");
 
-                // Password format: "hashBase64:saltBase64"
+                // Formato da palavra-passe: "hashBase64:saltBase64"
                 string[] passwordParts = user.Password.Split(':');
                 if (passwordParts.Length == 2)
                 {
-                    // New secure format: hash:salt (both Base64 encoded)
+                    // Novo formato seguro: hash:salt (ambos codificados em Base64)
                     byte[] storedHash = Convert.FromBase64String(passwordParts[0]);
                     byte[] storedSalt = Convert.FromBase64String(passwordParts[1]);
 
-                    Server.WriteSecurityLog("Password Verification", $"Verificando senha segura para {user.Username}", clientID);
+                    Server.WriteSecurityLog("Password Verification", $"A verificar palavra-passe segura para {user.Username}", clientID);
 
-                    // Use teacher's verification method
+                    // Usar método de verificação
                     bool result = Server.VerifyPassword(inputPassword, storedHash, storedSalt);
-                    Server.WriteLog($"Resultado da verificação para {user.Username}: {(result ? "SUCCESS" : "FAILED")}", "AUTH_RESULT");
+                    Server.WriteLog($"Resultado da verificação para {user.Username}: {(result ? "SUCESSO" : "FALHADO")}", "AUTH_RESULT");
                     return result;
                 }
                 else
                 {
-                    // Old plain text format (for backward compatibility)
-                    Server.WriteLog($"⚠️ User {user.Username} tem senha em texto simples - deve ser migrado", "AUTH_WARNING");
+                    // Formato antigo de texto simples (para compatibilidade)
+                    Server.WriteLog($"⚠️ Utilizador {user.Username} tem palavra-passe em texto simples - deve ser migrado", "AUTH_WARNING");
                     bool result = user.Password == inputPassword;
-                    Server.WriteLog($"Verificação de senha simples para {user.Username}: {(result ? "SUCCESS" : "FAILED")}", "AUTH_RESULT");
+                    Server.WriteLog($"Verificação de palavra-passe simples para {user.Username}: {(result ? "SUCESSO" : "FALHADO")}", "AUTH_RESULT");
                     return result;
                 }
             }
             catch (Exception ex)
             {
-                Server.WriteErrorLog($"Erro ao verificar senha para {user.Username}", ex);
+                Server.WriteErrorLog($"Erro ao verificar palavra-passe para {user.Username}", ex);
                 return false;
             }
         }
@@ -490,34 +490,34 @@ namespace Server
                 NetworkStream networkStream = this.client.GetStream();
                 ProtocolSI protocolSI = new ProtocolSI();
 
-                Server.WriteLog($"Handler iniciado para cliente {clientID}", "CLIENT_HANDLER");
+                Server.WriteLog($"Gestor iniciado para cliente {clientID}", "CLIENT_HANDLER");
 
                 while (protocolSI.GetCmdType() != ProtocolSICmdType.EOT)
                 {
                     int bytesRead = networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
                     byte[] ack;
 
-                    // Log dos dados recebidos
+                    // Registo dos dados recebidos
                     Server.WriteDetailedLog($"Dados recebidos do cliente {clientID}", $"Bytes: {bytesRead}, Comando: {protocolSI.GetCmdType()}", "RECEIVE");
 
                     switch (protocolSI.GetCmdType())
                     {
-                        case ProtocolSICmdType.DATA: // Messages and Key Exchange
+                        case ProtocolSICmdType.DATA: // Mensagens e Troca de Chaves
                             string rawData = protocolSI.GetStringFromData();
 
                             if (rawData.StartsWith("KEY_EXCHANGE:"))
                             {
-                                // This is a key exchange request
+                                // Isto é um pedido de troca de chaves
                                 string clientPublicKeyXml = rawData.Substring("KEY_EXCHANGE:".Length);
                                 Server.WriteSecurityLog("Key Exchange Request", "Cliente enviou chave pública RSA", clientID);
 
                                 try
                                 {
-                                    // Generate AES key and encrypt with client's RSA public key
+                                    // Gerar chave AES e encriptar com chave pública RSA do cliente
                                     byte[] encryptedAESKey = GenerateAndEncryptAESKey(clientPublicKeyXml);
                                     string encryptedKeyBase64 = Convert.ToBase64String(encryptedAESKey);
 
-                                    // Send encrypted AES key back to client
+                                    // Enviar chave AES encriptada de volta ao cliente
                                     ack = protocolSI.Make(ProtocolSICmdType.ACK, encryptedKeyBase64);
                                     networkStream.Write(ack, 0, ack.Length);
 
@@ -533,34 +533,34 @@ namespace Server
                             }
                             else
                             {
-                                // This is a regular message
+                                // Isto é uma mensagem regular
                                 try
                                 {
                                     string message;
                                     if (isEncryptionEstablished)
                                     {
-                                        // Decrypt message
+                                        // Desencriptar mensagem
                                         message = DecryptWithAES(rawData);
                                         Server.WriteDetailedLog($"Mensagem encriptada recebida do cliente {clientID}", $"Conteúdo: {message}", "MSG_ENCRYPTED");
                                     }
                                     else
                                     {
-                                        // Plain message
+                                        // Mensagem simples
                                         message = rawData;
                                         Server.WriteDetailedLog($"Mensagem simples recebida do cliente {clientID}", $"Conteúdo: {message}", "MSG_PLAIN");
                                     }
 
-                                    // Criar mensagem formatada com nome do user
+                                    // Criar mensagem formatada com nome do utilizador
                                     string formattedMessage;
                                     if (_userId > 0 && _username != null)
                                     {
                                         formattedMessage = $"{_username}: {message}";
-                                        Server.WriteLog($"Mensagem do usuário {_username} (ID: {_userId}): {message}", "USER_MESSAGE");
+                                        Server.WriteLog($"Mensagem do utilizador {_username} (ID: {_userId}): {message}", "USER_MESSAGE");
                                     }
                                     else
                                     {
                                         formattedMessage = $"Cliente {clientID}: {message}";
-                                        Server.WriteLog($"Mensagem do cliente anônimo {clientID}: {message}", "ANON_MESSAGE");
+                                        Server.WriteLog($"Mensagem do cliente anónimo {clientID}: {message}", "ANON_MESSAGE");
                                     }
 
                                     // Enviar para todos os outros clientes
@@ -579,20 +579,20 @@ namespace Server
                             }
                             break;
 
-                        case ProtocolSICmdType.USER_OPTION_1: // Encrypted Login
+                        case ProtocolSICmdType.USER_OPTION_1: // Login Encriptado
                             try
                             {
                                 string authData;
                                 if (isEncryptionEstablished)
                                 {
-                                    // Decrypt login data
+                                    // Desencriptar dados de login
                                     string encryptedAuthData = protocolSI.GetStringFromData();
                                     authData = DecryptWithAES(encryptedAuthData);
                                     Server.WriteLog($"Dados de login encriptados recebidos do cliente {clientID}", "LOGIN_ENCRYPTED");
                                 }
                                 else
                                 {
-                                    // Plain login data (backward compatibility)
+                                    // Dados de login simples (compatibilidade)
                                     authData = protocolSI.GetStringFromData();
                                     Server.WriteLog($"Dados de login simples recebidos do cliente {clientID}", "LOGIN_PLAIN");
                                 }
@@ -604,9 +604,9 @@ namespace Server
                                     string username = credentials[0];
                                     string password = credentials[1];
 
-                                    Server.WriteLog($"Tentativa de login: User: {username}, Cliente: {clientID}", "LOGIN_ATTEMPT");
+                                    Server.WriteLog($"Tentativa de login: Utilizador: {username}, Cliente: {clientID}", "LOGIN_ATTEMPT");
 
-                                    // Verificar credenciais no base de dados usando método do professor
+                                    // Verificar credenciais na base de dados 
                                     using (var dbContext = new ApplicationDbContext())
                                     {
                                         var user = dbContext.Users.FirstOrDefault(u => u.Username == username);
@@ -614,16 +614,16 @@ namespace Server
                                         if (user != null && VerifyUserPassword(user, password))
                                         {
                                             // Login bem-sucedido
-                                            Server.WriteLog($"Login bem-sucedido para User: {username}, Cliente: {clientID}", "LOGIN_SUCCESS");
+                                            Server.WriteLog($"Login bem-sucedido para Utilizador: {username}, Cliente: {clientID}", "LOGIN_SUCCESS");
                                             _userId = user.Id;
                                             _username = user.Username;
 
-                                            // Prepare response data
+                                            // Preparar dados de resposta
                                             string responseData = $"{user.Id}:{user.Username}";
 
                                             if (isEncryptionEstablished)
                                             {
-                                                // Send encrypted response
+                                                // Enviar resposta encriptada
                                                 string encryptedResponse = EncryptWithAES(responseData);
                                                 byte[] response = protocolSI.Make(ProtocolSICmdType.USER_OPTION_2, encryptedResponse);
                                                 networkStream.Write(response, 0, response.Length);
@@ -631,19 +631,19 @@ namespace Server
                                             }
                                             else
                                             {
-                                                // Send plain response
+                                                // Enviar resposta simples
                                                 byte[] response = protocolSI.Make(ProtocolSICmdType.USER_OPTION_2, responseData);
                                                 networkStream.Write(response, 0, response.Length);
                                                 Server.WriteLog($"Resposta de login simples enviada para {username}", "LOGIN_RESPONSE");
                                             }
 
-                                            // Avisar outros clientes que este user entrou
+                                            // Avisar outros clientes que este utilizador entrou
                                             Server.BroadcastMessage($"🔐 !!! {username} entrou no chat seguro !!!", clientID);
                                         }
                                         else
                                         {
                                             // Login falhou
-                                            Server.WriteLog($"Login falhou para User: {username}, Cliente: {clientID}", "LOGIN_FAILED");
+                                            Server.WriteLog($"Login falhou para Utilizador: {username}, Cliente: {clientID}", "LOGIN_FAILED");
 
                                             // Enviar resposta de falha
                                             byte[] response = protocolSI.Make(ProtocolSICmdType.ACK);
@@ -667,22 +667,22 @@ namespace Server
                             }
                             break;
 
-                        case ProtocolSICmdType.USER_OPTION_3: // Encrypted Register
+                        case ProtocolSICmdType.USER_OPTION_3: // Registo Encriptado
                             try
                             {
                                 string regData;
                                 if (isEncryptionEstablished)
                                 {
-                                    // Decrypt registration data
+                                    // Desencriptar dados de registo
                                     string encryptedRegData = protocolSI.GetStringFromData();
                                     regData = DecryptWithAES(encryptedRegData);
-                                    Server.WriteLog($"Dados de registro encriptados recebidos do cliente {clientID}", "REGISTER_ENCRYPTED");
+                                    Server.WriteLog($"Dados de registo encriptados recebidos do cliente {clientID}", "REGISTER_ENCRYPTED");
                                 }
                                 else
                                 {
-                                    // Plain registration data (backward compatibility)
+                                    // Dados de registo simples (compatibilidade)
                                     regData = protocolSI.GetStringFromData();
-                                    Server.WriteLog($"Dados de registro simples recebidos do cliente {clientID}", "REGISTER_PLAIN");
+                                    Server.WriteLog($"Dados de registo simples recebidos do cliente {clientID}", "REGISTER_PLAIN");
                                 }
 
                                 string[] regCredentials = regData.Split(':');
@@ -692,12 +692,12 @@ namespace Server
                                     string regUsername = regCredentials[0];
                                     string regPassword = regCredentials[1];
 
-                                    Server.WriteLog($"Tentativa de registro: User: {regUsername}, Cliente: {clientID}", "REGISTER_ATTEMPT");
+                                    Server.WriteLog($"Tentativa de registo: Utilizador: {regUsername}, Cliente: {clientID}", "REGISTER_ATTEMPT");
 
-                                    // Verificar se o usuário já existe e criar novo se não existir
+                                    // Verificar se o utilizador já existe e criar novo se não existir
                                     using (var dbContext = new ApplicationDbContext())
                                     {
-                                        // Verificar se o username já existe
+                                        // Verificar se o nome de utilizador já existe
                                         var existingUser = dbContext.Users
                                             .FirstOrDefault(u => u.Username == regUsername);
 
@@ -706,11 +706,11 @@ namespace Server
                                         {
                                             try
                                             {
-                                                // Username não existe, criar novo usuário com senha segura
+                                                // Nome de utilizador não existe, criar novo utilizador com palavra-passe segura
                                                 byte[] salt = Server.GenerateSalt();
                                                 byte[] hash = Server.GenerateSaltedHash(regPassword, salt);
 
-                                                // Store as Base64 strings (format: hash:salt)
+                                                // Armazenar como strings Base64 (formato: hash:salt)
                                                 string hashBase64 = Convert.ToBase64String(hash);
                                                 string saltBase64 = Convert.ToBase64String(salt);
 
@@ -723,42 +723,42 @@ namespace Server
                                                 dbContext.Users.Add(newUser);
                                                 dbContext.SaveChanges();
 
-                                                Server.WriteLog($"Usuário {regUsername} registrado com sucesso (PBKDF2)", "REGISTER_SUCCESS");
+                                                Server.WriteLog($"Utilizador {regUsername} registado com sucesso (PBKDF2)", "REGISTER_SUCCESS");
                                                 responseMessage = "SUCCESS";
                                             }
                                             catch (Exception ex)
                                             {
-                                                Server.WriteErrorLog($"Erro ao salvar usuário {regUsername}", ex);
+                                                Server.WriteErrorLog($"Erro ao guardar utilizador {regUsername}", ex);
                                                 responseMessage = "FAILURE";
                                             }
                                         }
                                         else
                                         {
-                                            // Username já existe
-                                            Server.WriteLog($"Registro falhou: Username {regUsername} já existe", "REGISTER_FAILED");
+                                            // Nome de utilizador já existe
+                                            Server.WriteLog($"Registo falhou: Nome de utilizador {regUsername} já existe", "REGISTER_FAILED");
                                             responseMessage = "FAILURE";
                                         }
 
-                                        // Send response (encrypted or plain)
+                                        // Enviar resposta (encriptada ou simples)
                                         if (isEncryptionEstablished)
                                         {
                                             string encryptedResponse = EncryptWithAES(responseMessage);
                                             byte[] response = protocolSI.Make(ProtocolSICmdType.USER_OPTION_4, encryptedResponse);
                                             networkStream.Write(response, 0, response.Length);
-                                            Server.WriteLog($"Resposta de registro encriptada enviada: {responseMessage}", "REGISTER_RESPONSE");
+                                            Server.WriteLog($"Resposta de registo encriptada enviada: {responseMessage}", "REGISTER_RESPONSE");
                                         }
                                         else
                                         {
                                             byte[] response = protocolSI.Make(ProtocolSICmdType.USER_OPTION_4, responseMessage);
                                             networkStream.Write(response, 0, response.Length);
-                                            Server.WriteLog($"Resposta de registro simples enviada: {responseMessage}", "REGISTER_RESPONSE");
+                                            Server.WriteLog($"Resposta de registo simples enviada: {responseMessage}", "REGISTER_RESPONSE");
                                         }
                                     }
                                 }
                                 else
                                 {
                                     // Formato inválido
-                                    Server.WriteLog($"Formato de dados de registro inválido do cliente {clientID}", "REGISTER_ERROR");
+                                    Server.WriteLog($"Formato de dados de registo inválido do cliente {clientID}", "REGISTER_ERROR");
                                     string errorMsg = "FAILURE";
 
                                     if (isEncryptionEstablished)
@@ -776,7 +776,7 @@ namespace Server
                             }
                             catch (Exception ex)
                             {
-                                Server.WriteErrorLog($"Erro ao processar registro do cliente {clientID}", ex);
+                                Server.WriteErrorLog($"Erro ao processar registo do cliente {clientID}", ex);
                                 string errorMsg = "FAILURE";
 
                                 if (isEncryptionEstablished)
@@ -808,24 +808,24 @@ namespace Server
             }
             catch (Exception ex)
             {
-                Server.WriteErrorLog($"Erro no handler do cliente {clientID}", ex);
+                Server.WriteErrorLog($"Erro no gestor do cliente {clientID}", ex);
             }
             finally
             {
-                // Log da desconexão
+                // Registo da desligação
                 if (_userId > 0 && _username != null)
                 {
-                    Server.WriteLog($"Usuario {_username} (ID: {_userId}) desconectou - Cliente {clientID}", "USER_DISCONNECT");
+                    Server.WriteLog($"Utilizador {_username} (ID: {_userId}) desligou - Cliente {clientID}", "USER_DISCONNECT");
                 }
                 else
                 {
-                    Server.WriteLog($"Cliente anônimo {clientID} desconectou", "CLIENT_DISCONNECT");
+                    Server.WriteLog($"Cliente anónimo {clientID} desligou", "CLIENT_DISCONNECT");
                 }
 
-                // Remover este cliente da lista ao desconectar
+                // Remover este cliente da lista ao desligar
                 Server.RemoveClient(this);
 
-                // Notificar outros users que este saiu (se estava logado)
+                // Notificar outros utilizadores que este saiu (se estava autenticado)
                 if (_userId > 0 && _username != null)
                 {
                     Server.BroadcastMessage($"🔐 *** {_username} saiu do chat seguro ***");
@@ -834,11 +834,11 @@ namespace Server
                 try
                 {
                     client.Close();
-                    Server.WriteLog($"Conexão fechada para cliente {clientID}", "CONNECTION");
+                    Server.WriteLog($"Ligação fechada para cliente {clientID}", "CONNECTION");
                 }
                 catch (Exception ex)
                 {
-                    Server.WriteErrorLog($"Erro ao fechar conexão do cliente {clientID}", ex);
+                    Server.WriteErrorLog($"Erro ao fechar ligação do cliente {clientID}", ex);
                 }
             }
         }
