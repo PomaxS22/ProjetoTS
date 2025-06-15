@@ -15,40 +15,43 @@ namespace Client
 {
     public partial class Client : Form
     {
-        private const int PORT = 10000;
         NetworkStream networkStream;
         ProtocolSI protocolSI;
         TcpClient client;
 
-        // Variável para armazenar o ID do usuário logado
+        // User information received from Login form
         private int loggedUserId = -1;
         private string loggedUsername = null;
 
-        // Thread para receber mensagens
+        // Thread for receiving messages
         private Thread receiveThread;
         private bool isRunning = false;
 
-        public Client()
+        // New constructor that accepts authentication parameters from Login form
+        public Client(int userId, string username, TcpClient tcpClient, NetworkStream stream, ProtocolSI protocol)
         {
             InitializeComponent();
 
-            // Configurar a UI inicial (mostrando apenas o login)
-            SetLoginUIVisible(true);
+            // Set user information
+            loggedUserId = userId;
+            loggedUsername = username;
 
-            // A conexão será estabelecida após o login bem-sucedido
+            // Set network components
+            client = tcpClient;
+            networkStream = stream;
+            protocolSI = protocol;
+
+            // Update form title with username
+            this.Text = $"Chat - {loggedUsername}";
+
+            // Username Label
+            labelUserName.Text = loggedUsername;    
+
+            // Start receiving messages
+            StartReceiving();
         }
 
-        // Método para controlar a visibilidade da UI
-        private void SetLoginUIVisible(bool showLoginUI)
-        {
-            // Painel de login
-            panelLogin.Visible = showLoginUI;
-
-            // Painel de mensagens
-            panelMessage.Visible = !showLoginUI;
-        }
-
-        // Iniciar a thread de recepção de mensagens
+        // Start the message receiving thread
         private void StartReceiving()
         {
             isRunning = true;
@@ -57,34 +60,34 @@ namespace Client
             receiveThread.Start();
         }
 
-        // Método para receber mensagens
+        // Method to receive messages
         private void ReceiveMessages()
         {
             try
             {
                 while (isRunning)
                 {
-                    // Verificar se há dados disponíveis
+                    // Check if data is available
                     if (networkStream.DataAvailable)
                     {
-                        // Ler mensagem
+                        // Read message
                         networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
 
-                        // Verificar tipo da mensagem
+                        // Check message type
                         if (protocolSI.GetCmdType() == ProtocolSICmdType.DATA)
                         {
                             string message = protocolSI.GetStringFromData();
 
-                            // Atualizar a UI com a mensagem recebida
+                            // Update UI with received message
                             UpdateChatBox(message);
 
-                            // Enviar ACK
+                            // Send ACK
                             byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK);
                             networkStream.Write(ack, 0, ack.Length);
                         }
                     }
 
-                    // Pequena pausa para não sobrecarregar a CPU
+                    // Small pause to not overload CPU
                     Thread.Sleep(10);
                 }
             }
@@ -94,113 +97,25 @@ namespace Client
             }
         }
 
-        // Método para atualizar a caixa de chat com segurança entre threads
+        // Method to safely update chat box across threads
         private void UpdateChatBox(string message)
         {
             if (txtChatBox.InvokeRequired)
             {
-                // Se estamos em outra thread, invocamos este método na thread da UI
+                // If we're on another thread, invoke this method on the UI thread
                 txtChatBox.Invoke(new Action<string>(UpdateChatBox), message);
             }
             else
             {
-                // Estamos na thread da UI, podemos atualizar diretamente
+                // We're on the UI thread, can update directly
                 txtChatBox.AppendText(message + Environment.NewLine);
-                // Rolar para o final
+                // Scroll to the end
                 txtChatBox.SelectionStart = txtChatBox.Text.Length;
                 txtChatBox.ScrollToCaret();
             }
         }
 
-        // Método para autenticar o usuário com o servidor
-        private bool AuthenticateUser(string username, string password)
-        {
-            try
-            {
-                // Conectar ao servidor
-                ConnectToServer();
-
-                // Criar o pacote de autenticação (username:password)
-                string authData = $"{username}:{password}";
-                byte[] packet = protocolSI.Make(ProtocolSICmdType.USER_OPTION_1, authData);
-
-                // Enviar pacote
-                networkStream.Write(packet, 0, packet.Length);
-
-                // Aguardar resposta
-                networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
-
-                // Verificar resposta
-                if (protocolSI.GetCmdType() == ProtocolSICmdType.USER_OPTION_2)
-                {
-                    // Autenticação bem-sucedida
-                    string userData = protocolSI.GetStringFromData();
-                    string[] parts = userData.Split(':');
-
-                    if (parts.Length >= 2)
-                    {
-                        loggedUserId = int.Parse(parts[0]);
-                        loggedUsername = parts[1];
-
-                        // Iniciar thread de recepção de mensagens
-                        StartReceiving();
-
-                        return true;
-                    }
-                }
-
-                // Se chegou aqui, a autenticação falhou
-                return false;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Erro ao autenticar: " + ex.Message, "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
-            }
-        }
-
-        private void btnLogin_Click_1(object sender, EventArgs e)
-        {
-            string username = txtUsername.Text;
-            string password = txtPassword.Text;
-
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
-            {
-                MessageBox.Show("Por favor, preencha o usuário e senha.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            // Tentar autenticar com o servidor
-            if (AuthenticateUser(username, password))
-            {
-                // Login bem-sucedido - alterar a UI e já estamos conectados
-                SetLoginUIVisible(false);
-            }
-            else
-            {
-                MessageBox.Show("Usuário ou senha incorretos.", "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        // Método para conectar ao servidor
-        private void ConnectToServer()
-        {
-            try
-            {
-                IPEndPoint endpoint = new IPEndPoint(IPAddress.Loopback, PORT);
-                client = new TcpClient();
-                client.Connect(endpoint);
-                networkStream = client.GetStream();
-                protocolSI = new ProtocolSI();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Erro ao conectar ao servidor: " + ex.Message, "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                throw; // Propagar o erro para ser capturado pelo chamador
-            }
-        }
-
-        // Método do botão enviar
+        // Send message button click event
         private void buttonSend_Click(object sender, EventArgs e)
         {
             string msg = textBoxMessage.Text;
@@ -208,39 +123,35 @@ namespace Client
                 return;
 
             textBoxMessage.Clear();
-            byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, msg); //cria uma mensagem/pacote de um tipo específico
+            byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, msg);
             networkStream.Write(packet, 0, packet.Length);
 
-            // Aguardar ACK
+            // Wait for ACK
             while (protocolSI.GetCmdType() != ProtocolSICmdType.ACK)
             {
                 networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
             }
 
-            // Mostrar mensagem enviada no próprio chat (opcional)
+            // Show sent message in own chat (optional)
             UpdateChatBox($"Eu: {msg}");
         }
 
-        //Método para fechar o Client
+        // Method to close client connection
         private void CloseClient()
         {
             try
             {
-                // Parar thread de recepção
+                // Stop receiving thread
                 isRunning = false;
                 if (receiveThread != null && receiveThread.IsAlive)
                 {
-                    receiveThread.Join(1000); // Esperar até 1 segundo pela thread terminar
+                    receiveThread.Join(1000); // Wait up to 1 second for thread to finish
                 }
 
                 if (networkStream != null && client != null && client.Connected)
                 {
-                    // Definição da variável eot (End of Transmission) do tipo array de byte.
-                    // Utilização do método Make. ProtocolSICmdType serve para enviar dados
+                    // Send End of Transmission
                     byte[] eot = protocolSI.Make(ProtocolSICmdType.EOT);
-
-                    // A classe NetworkStream disponibiliza métodos para enviar/receber dados através de socket Stream
-                    // O Socket de rede é um endpoint interno para envio e recepção de dados com um nó/computador presente na rede.
                     networkStream.Write(eot, 0, eot.Length);
                     networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
                     networkStream.Close();
@@ -253,17 +164,15 @@ namespace Client
             }
         }
 
-        //Método para fechar o formulário
+        // Form closing event
         private void Client_FormClosing(object sender, FormClosingEventArgs e)
         {
-            // Chamar a função para fechar o Client
             CloseClient();
         }
 
-        //Método para o Botão para sair
+        // Quit button click event
         private void buttonQuit_Click(object sender, EventArgs e)
         {
-            // Chamar a função para fechar o Client e associar a este próprio botão
             CloseClient();
             this.Close();
         }

@@ -81,29 +81,6 @@ namespace Server
                     dbContext.Database.CreateIfNotExists();
                     Console.WriteLine("Verificação de base de dados concluída.");
 
-                    // Verificar se existe uma sala padrão
-                    /*if (!dbContext.Rooms.Any())
-                    {
-                        Console.WriteLine("Criando sala principal...");
-                        dbContext.Rooms.Add(new Room { Name = "Sala Principal" });
-                        dbContext.SaveChanges();
-                        Console.WriteLine("Sala Principal criada.");
-                    }*/
-
-                    if (!dbContext.Users.Any())
-                    {
-                        Console.WriteLine("Criando Users padrão...");
-
-                        // Adicionar os Users predefinidos
-                        dbContext.Users.Add(new User { Username = "Reis", Password = "123" });
-                        dbContext.Users.Add(new User { Username = "Sa", Password = "123" });
-                        dbContext.Users.Add(new User { Username = "Ricardo", Password = "123" });
-                        dbContext.Users.Add(new User { Username = "Teste", Password = "1234" });
-
-                        dbContext.SaveChanges();
-                        Console.WriteLine("Users padrão criados com sucesso.");
-                    }
-
                     IPEndPoint endpoint = new IPEndPoint(IPAddress.Any, PORT);
                     TcpListener listener = new TcpListener(endpoint);
                     Console.WriteLine("Iniciando listener na porta " + PORT);
@@ -267,6 +244,73 @@ namespace Server
                                 // Formato inválido
                                 Console.WriteLine("Formato de dados de autenticação inválido");
                                 byte[] response = protocolSI.Make(ProtocolSICmdType.ACK);
+                                networkStream.Write(response, 0, response.Length);
+                            }
+                            break;
+
+                        case ProtocolSICmdType.USER_OPTION_3: // Register
+                            string regData = protocolSI.GetStringFromData();
+                            string[] regCredentials = regData.Split(':');
+
+                            if (regCredentials.Length == 2)
+                            {
+                                string regUsername = regCredentials[0];
+                                string regPassword = regCredentials[1];
+
+                                Console.WriteLine($"Tentativa de registro: User: {regUsername}");
+
+                                // Verificar se o usuário já existe e criar novo se não existir
+                                using (var dbContext = new ApplicationDbContext())
+                                {
+                                    // Verificar se o username já existe
+                                    var existingUser = dbContext.Users
+                                        .FirstOrDefault(u => u.Username == regUsername);
+
+                                    if (existingUser == null)
+                                    {
+                                        try
+                                        {
+                                            // Username não existe, criar novo usuário
+                                            var newUser = new User
+                                            {
+                                                Username = regUsername,
+                                                Password = regPassword
+                                            };
+
+                                            dbContext.Users.Add(newUser);
+                                            dbContext.SaveChanges();
+
+                                            Console.WriteLine($"Usuário {regUsername} registrado com sucesso!");
+
+                                            // Enviar resposta de sucesso
+                                            byte[] response = protocolSI.Make(ProtocolSICmdType.USER_OPTION_4, "SUCCESS");
+                                            networkStream.Write(response, 0, response.Length);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.WriteLine($"Erro ao salvar usuário {regUsername}: {ex.Message}");
+
+                                            // Enviar resposta de falha
+                                            byte[] response = protocolSI.Make(ProtocolSICmdType.USER_OPTION_4, "FAILURE");
+                                            networkStream.Write(response, 0, response.Length);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Username já existe
+                                        Console.WriteLine($"Registro falhou: Username {regUsername} já existe");
+
+                                        // Enviar resposta de falha
+                                        byte[] response = protocolSI.Make(ProtocolSICmdType.USER_OPTION_4, "FAILURE");
+                                        networkStream.Write(response, 0, response.Length);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Formato inválido
+                                Console.WriteLine("Formato de dados de registro inválido");
+                                byte[] response = protocolSI.Make(ProtocolSICmdType.USER_OPTION_4, "FAILURE");
                                 networkStream.Write(response, 0, response.Length);
                             }
                             break;
