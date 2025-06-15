@@ -11,6 +11,7 @@ using System.Threading;
 using System.Security.Cryptography;
 using System.Text;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace Server
 {
@@ -27,7 +28,11 @@ namespace Server
         private static readonly object logLock = new object();
 
         // Lista estática para armazenar os gestores de cliente
-        private static readonly List<ClientHandler> connectedClients = new List<ClientHandler>();
+        public static readonly List<ClientHandler> connectedClients = new List<ClientHandler>();
+
+        // NOVO: Armazenar chaves públicas RSA para validação de assinaturas
+        private static readonly Dictionary<int, RSACryptoServiceProvider> userPublicKeys = new Dictionary<int, RSACryptoServiceProvider>();
+        private static readonly object publicKeysLock = new object();
 
         /// <summary>
         /// Escreve entrada no registo com timestamp e categoria
@@ -90,11 +95,19 @@ namespace Server
         }
 
         /// <summary>
+        /// NOVO: Registo específico para assinaturas digitais
+        /// </summary>
+        public static void WriteSignatureLog(string operation, string details, int userId = -1)
+        {
+            string userInfo = userId > 0 ? $"Utilizador {userId}" : "Sistema";
+            WriteLog($"🔏 {userInfo}: {operation} - {details}", "SIGNATURE");
+        }
+
+        /// <summary>
         /// Gerar salt criptograficamente seguro
         /// </summary>
         public static byte[] GenerateSalt()
         {
-            // Gerar um número aleatório criptográfico
             RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider();
             byte[] buff = new byte[SALTSIZE];
             rng.GetBytes(buff);
@@ -132,6 +145,101 @@ namespace Server
             }
         }
 
+        /// <summary>
+        /// NOVO: Registar chave pública RSA de um utilizador para validação de assinaturas
+        /// </summary>
+        public static bool RegisterUserPublicKey(int userId, string publicKeyXml)
+        {
+            try
+            {
+                lock (publicKeysLock)
+                {
+                    // Remover chave anterior se existir
+                    if (userPublicKeys.ContainsKey(userId))
+                    {
+                        userPublicKeys[userId].Dispose();
+                        userPublicKeys.Remove(userId);
+                    }
+
+                    // Adicionar nova chave
+                    RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
+                    rsa.FromXmlString(publicKeyXml);
+                    userPublicKeys[userId] = rsa;
+
+                    WriteSignatureLog("Public Key Registered", $"Chave pública registada para validação de assinaturas", userId);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteErrorLog($"Erro ao registar chave pública do utilizador {userId}", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Verificar assinatura digital de uma mensagem
+        /// </summary>
+        public static bool VerifyMessageSignature(string message, string signatureBase64, int senderId)
+        {
+            try
+            {
+                lock (publicKeysLock)
+                {
+                    if (!userPublicKeys.ContainsKey(senderId))
+                    {
+                        WriteSignatureLog("Verification Failed", $"Chave pública não encontrada para utilizador {senderId}", senderId);
+                        return false;
+                    }
+
+                    RSACryptoServiceProvider senderPublicKey = userPublicKeys[senderId];
+                    byte[] messageBytes = Encoding.UTF8.GetBytes(message);
+                    byte[] signature = Convert.FromBase64String(signatureBase64);
+
+                    // Verificar assinatura usando SHA256
+                    bool isValid = senderPublicKey.VerifyData(messageBytes, new SHA256CryptoServiceProvider(), signature);
+
+                    WriteSignatureLog("Signature Verification", $"Resultado: {(isValid ? "VÁLIDA" : "INVÁLIDA")}", senderId);
+                    return isValid;
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteErrorLog($"Erro na verificação de assinatura do utilizador {senderId}", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Obter todas as chaves públicas para enviar aos clientes
+        /// </summary>
+        public static string GetAllPublicKeysForDistribution()
+        {
+            try
+            {
+                lock (publicKeysLock)
+                {
+                    List<string> keyEntries = new List<string>();
+
+                    foreach (var keyPair in userPublicKeys)
+                    {
+                        int userId = keyPair.Key;
+                        string publicKeyXml = keyPair.Value.ToXmlString(false); // Apenas chave pública
+                        keyEntries.Add($"{userId}:{publicKeyXml}");
+                    }
+
+                    string result = "PUBLIC_KEYS:" + string.Join("|", keyEntries);
+                    WriteSignatureLog("Public Keys Distribution", $"Enviando {keyEntries.Count} chaves públicas");
+                    return result;
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteErrorLog("Erro ao preparar chaves públicas para distribuição", ex);
+                return "PUBLIC_KEYS:";
+            }
+        }
+
         // Método para adicionar cliente à lista
         public static void AddClient(ClientHandler client)
         {
@@ -152,7 +260,24 @@ namespace Server
             }
         }
 
-        // Método para enviar mensagem a todos os clientes
+        // NOVO: Método para enviar mensagem assinada a todos os clientes (apenas após validação)
+        public static void BroadcastSignedMessage(string signedMessageData, int excludeClientId = -1)
+        {
+            lock (connectedClients)
+            {
+                WriteLog($"Broadcasting mensagem assinada para {connectedClients.Count} clientes (excepto {excludeClientId})", "BROADCAST_SIGNED");
+
+                foreach (var client in connectedClients)
+                {
+                    if (client.ClientID != excludeClientId) // Não enviar para o remetente
+                    {
+                        client.SendMessage(signedMessageData);
+                    }
+                }
+            }
+        }
+
+        // Método para enviar mensagem a todos os clientes (mantido para compatibilidade)
         public static void BroadcastMessage(string message, int excludeClientId = -1)
         {
             lock (connectedClients)
@@ -161,7 +286,7 @@ namespace Server
 
                 foreach (var client in connectedClients)
                 {
-                    if (client.ClientID != excludeClientId) // Não enviar para o remetente
+                    if (client.ClientID != excludeClientId)
                     {
                         client.SendMessage(message);
                     }
@@ -169,18 +294,36 @@ namespace Server
             }
         }
 
+        /// <summary>
+        /// NOVO: Enviar chaves públicas para um cliente específico
+        /// </summary>
+        public static void SendPublicKeysToClient(ClientHandler client)
+        {
+            try
+            {
+                string publicKeysData = GetAllPublicKeysForDistribution();
+                client.SendMessage(publicKeysData);
+                WriteSignatureLog("Public Keys Sent", $"Chaves públicas enviadas para cliente {client.ClientID}");
+            }
+            catch (Exception ex)
+            {
+                WriteErrorLog($"Erro ao enviar chaves públicas para cliente {client.ClientID}", ex);
+            }
+        }
+
         static void Main(string[] args)
         {
             try
             {
-                WriteLog("=== INICIANDO SERVIDOR SEGURO ===", "STARTUP");
-                WriteLog("🔐 Sistema de chat seguro com registo a iniciar...", "STARTUP");
+                WriteLog("=== INICIANDO SERVIDOR SEGURO COM ASSINATURAS DIGITAIS ===", "STARTUP");
+                WriteLog("🔐🔏 Sistema de chat seguro com assinaturas digitais a iniciar...", "STARTUP");
 
                 // Registo de informações do sistema
                 WriteLog($"Versão .NET Framework: {Environment.Version}", "SYSTEM");
                 WriteLog($"Directório actual: {AppDomain.CurrentDomain.BaseDirectory}", "SYSTEM");
                 WriteLog($"Registo será guardado em: {LOG_FILE_PATH}", "SYSTEM");
                 WriteSecurityLog("Sistema Iniciado", $"Configurações de segurança: SALTSIZE={SALTSIZE}, ITERATIONS={NUMBER_OF_ITERATIONS}");
+                WriteSignatureLog("Sistema Iniciado", "Sistema de assinaturas digitais activado");
 
                 // Configurar o directório de dados
                 AppDomain.CurrentDomain.SetData("DataDirectory",
@@ -223,7 +366,7 @@ namespace Server
                     TcpListener listener = new TcpListener(endpoint);
                     WriteLog($"A iniciar listener na porta {PORT}", "NETWORK");
                     listener.Start();
-                    WriteLog("🔐 SERVIDOR SEGURO PRONTO - A aguardar ligações...", "STARTUP");
+                    WriteLog("🔐🔏 SERVIDOR SEGURO COM ASSINATURAS PRONTO - A aguardar ligações...", "STARTUP");
 
                     int clientCounter = 0;
 
@@ -248,32 +391,21 @@ namespace Server
             finally
             {
                 WriteLog("=== SERVIDOR SEGURO A ENCERRAR ===", "SHUTDOWN");
+
+                // NOVO: Limpar chaves RSA
+                lock (publicKeysLock)
+                {
+                    foreach (var keyPair in userPublicKeys)
+                    {
+                        keyPair.Value.Dispose();
+                    }
+                    userPublicKeys.Clear();
+                    WriteSignatureLog("Sistema Encerrado", "Chaves RSA limpas da memória");
+                }
+
                 WriteLog("Prima qualquer tecla para sair...", "SHUTDOWN");
                 Console.ReadKey();
             }
-        }
-
-        /// <summary>
-        /// Criar utilizador seguro usando método PBKDF2
-        /// </summary>
-        private static void CreateSecureUser(ApplicationDbContext dbContext, string username, string password)
-        {
-            WriteLog($"A criar utilizador seguro: {username}", "USER_CREATION");
-
-            byte[] salt = GenerateSalt();
-            byte[] hash = GenerateSaltedHash(password, salt);
-
-            // Armazenar como strings Base64 temporariamente (até o modelo User ser actualizado para byte[])
-            string hashBase64 = Convert.ToBase64String(hash);
-            string saltBase64 = Convert.ToBase64String(salt);
-
-            dbContext.Users.Add(new User
-            {
-                Username = username,
-                Password = $"{hashBase64}:{saltBase64}" // Formato: hash:salt
-            });
-
-            WriteSecurityLog("User Created", $"Utilizador {username} criado com hash segura ({hash.Length * 8} bits)");
         }
     }
 
@@ -502,7 +634,7 @@ namespace Server
 
                     switch (protocolSI.GetCmdType())
                     {
-                        case ProtocolSICmdType.DATA: // Mensagens e Troca de Chaves
+                        case ProtocolSICmdType.DATA: // Mensagens, Troca de Chaves e Assinaturas
                             string rawData = protocolSI.GetStringFromData();
 
                             if (rawData.StartsWith("KEY_EXCHANGE:"))
@@ -533,46 +665,65 @@ namespace Server
                             }
                             else
                             {
-                                // Isto é uma mensagem regular
+                                // Isto pode ser uma mensagem regular ou comando especial
                                 try
                                 {
-                                    string message;
+                                    string decryptedData;
                                     if (isEncryptionEstablished)
                                     {
-                                        // Desencriptar mensagem
-                                        message = DecryptWithAES(rawData);
-                                        Server.WriteDetailedLog($"Mensagem encriptada recebida do cliente {clientID}", $"Conteúdo: {message}", "MSG_ENCRYPTED");
+                                        // Desencriptar dados
+                                        decryptedData = DecryptWithAES(rawData);
+                                        Server.WriteDetailedLog($"Dados encriptados recebidos do cliente {clientID}", $"Conteúdo: {decryptedData}", "DATA_ENCRYPTED");
                                     }
                                     else
                                     {
-                                        // Mensagem simples
-                                        message = rawData;
-                                        Server.WriteDetailedLog($"Mensagem simples recebida do cliente {clientID}", $"Conteúdo: {message}", "MSG_PLAIN");
+                                        // Dados simples
+                                        decryptedData = rawData;
+                                        Server.WriteDetailedLog($"Dados simples recebidos do cliente {clientID}", $"Conteúdo: {decryptedData}", "DATA_PLAIN");
                                     }
 
-                                    // Criar mensagem formatada com nome do utilizador
-                                    string formattedMessage;
-                                    if (_userId > 0 && _username != null)
+                                    // NOVO: Processar comandos especiais para assinaturas
+                                    if (decryptedData.StartsWith("REGISTER_SIGNATURE_KEY:"))
                                     {
-                                        formattedMessage = $"{_username}: {message}";
-                                        Server.WriteLog($"Mensagem do utilizador {_username} (ID: {_userId}): {message}", "USER_MESSAGE");
+                                        // Comando para registar chave pública para assinaturas
+                                        ProcessSignatureKeyRegistration(decryptedData, networkStream, protocolSI);
+                                    }
+                                    else if (decryptedData.StartsWith("REQUEST_PUBLIC_KEYS"))
+                                    {
+                                        // Comando para solicitar chaves públicas de outros utilizadores
+                                        ProcessPublicKeysRequest(networkStream, protocolSI);
+                                    }
+                                    else if (decryptedData.StartsWith("SIGNED_MESSAGE:"))
+                                    {
+                                        // Mensagem assinada digitalmente
+                                        ProcessSignedMessage(decryptedData, networkStream, protocolSI);
                                     }
                                     else
                                     {
-                                        formattedMessage = $"Cliente {clientID}: {message}";
-                                        Server.WriteLog($"Mensagem do cliente anónimo {clientID}: {message}", "ANON_MESSAGE");
+                                        // Mensagem regular (compatibilidade)
+                                        string formattedMessage;
+                                        if (_userId > 0 && _username != null)
+                                        {
+                                            formattedMessage = $"{_username}: {decryptedData}";
+                                            Server.WriteLog($"Mensagem do utilizador {_username} (ID: {_userId}): {decryptedData}", "USER_MESSAGE");
+                                        }
+                                        else
+                                        {
+                                            formattedMessage = $"Cliente {clientID}: {decryptedData}";
+                                            Server.WriteLog($"Mensagem do cliente anónimo {clientID}: {decryptedData}", "ANON_MESSAGE");
+                                        }
+
+                                        // Enviar para todos os outros clientes (modo compatibilidade)
+                                        Server.BroadcastMessage(formattedMessage, clientID);
+
+                                        ack = protocolSI.Make(ProtocolSICmdType.ACK);
+                                        networkStream.Write(ack, 0, ack.Length);
+                                        Server.WriteDetailedLog($"ACK enviado para cliente {clientID}", "Resposta a mensagem", "PROTOCOL");
                                     }
-
-                                    // Enviar para todos os outros clientes
-                                    Server.BroadcastMessage(formattedMessage, clientID);
-
-                                    ack = protocolSI.Make(ProtocolSICmdType.ACK);
-                                    networkStream.Write(ack, 0, ack.Length);
-                                    Server.WriteDetailedLog($"ACK enviado para cliente {clientID}", "Resposta a mensagem", "PROTOCOL");
                                 }
                                 catch (Exception ex)
                                 {
-                                    Server.WriteErrorLog($"Erro ao processar mensagem do cliente {clientID}", ex);
+                                    Server.WriteErrorLog($"Erro ao processar dados do cliente {clientID}", ex);
                                     ack = protocolSI.Make(ProtocolSICmdType.ACK);
                                     networkStream.Write(ack, 0, ack.Length);
                                 }
@@ -638,7 +789,7 @@ namespace Server
                                             }
 
                                             // Avisar outros clientes que este utilizador entrou
-                                            Server.BroadcastMessage($"🔐 !!! {username} entrou no chat seguro !!!", clientID);
+                                            Server.BroadcastMessage($"🔐🔏 !!! {username} entrou no chat seguro com assinaturas !!!", clientID);
                                         }
                                         else
                                         {
@@ -828,7 +979,7 @@ namespace Server
                 // Notificar outros utilizadores que este saiu (se estava autenticado)
                 if (_userId > 0 && _username != null)
                 {
-                    Server.BroadcastMessage($"🔐 *** {_username} saiu do chat seguro ***");
+                    Server.BroadcastMessage($"🔐🔏 *** {_username} saiu do chat seguro ***");
                 }
 
                 try
@@ -840,6 +991,174 @@ namespace Server
                 {
                     Server.WriteErrorLog($"Erro ao fechar ligação do cliente {clientID}", ex);
                 }
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Processar registo de chave pública para assinaturas
+        /// </summary>
+        private void ProcessSignatureKeyRegistration(string data, NetworkStream networkStream, ProtocolSI protocolSI)
+        {
+            try
+            {
+                // Formato: REGISTER_SIGNATURE_KEY:userId:publicKeyXml
+                string[] parts = data.Split(new char[] { ':' }, 3);
+                if (parts.Length == 3)
+                {
+                    int userId = int.Parse(parts[1]);
+                    string publicKeyXml = parts[2];
+
+                    // Verificar se é o utilizador correcto
+                    if (userId == _userId)
+                    {
+                        bool success = Server.RegisterUserPublicKey(userId, publicKeyXml);
+                        string responseMessage = success ? "SIGNATURE_KEY_REGISTERED" : "SIGNATURE_KEY_ERROR";
+
+                        // Enviar resposta encriptada
+                        string encryptedResponse = EncryptWithAES(responseMessage);
+                        byte[] response = protocolSI.Make(ProtocolSICmdType.ACK, encryptedResponse);
+                        networkStream.Write(response, 0, response.Length);
+
+                        if (success)
+                        {
+                            Server.WriteSignatureLog("Key Registration Success", $"Chave pública registada para utilizador {_username}", _userId);
+
+                            // Notificar outros clientes sobre nova chave disponível
+                            Task.Run(() =>
+                            {
+                                Thread.Sleep(500); // Pequena pausa
+                                BroadcastUpdatedPublicKeys();
+                            });
+                        }
+                    }
+                    else
+                    {
+                        Server.WriteSignatureLog("Key Registration Failed", $"Tentativa de registar chave para utilizador incorrecto", _userId);
+                        string encryptedError = EncryptWithAES("SIGNATURE_KEY_ERROR");
+                        byte[] response = protocolSI.Make(ProtocolSICmdType.ACK, encryptedError);
+                        networkStream.Write(response, 0, response.Length);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Server.WriteErrorLog($"Erro ao processar registo de chave para assinaturas do cliente {clientID}", ex);
+                string encryptedError = EncryptWithAES("SIGNATURE_KEY_ERROR");
+                byte[] response = protocolSI.Make(ProtocolSICmdType.ACK, encryptedError);
+                networkStream.Write(response, 0, response.Length);
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Processar pedido de chaves públicas
+        /// </summary>
+        private void ProcessPublicKeysRequest(NetworkStream networkStream, ProtocolSI protocolSI)
+        {
+            try
+            {
+                // Enviar todas as chaves públicas disponíveis
+                Server.SendPublicKeysToClient(this);
+
+                // Enviar ACK
+                byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK);
+                networkStream.Write(ack, 0, ack.Length);
+
+                Server.WriteSignatureLog("Public Keys Sent", $"Chaves públicas enviadas para cliente {clientID}");
+            }
+            catch (Exception ex)
+            {
+                Server.WriteErrorLog($"Erro ao processar pedido de chaves públicas do cliente {clientID}", ex);
+                byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK);
+                networkStream.Write(ack, 0, ack.Length);
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Processar mensagem assinada digitalmente
+        /// </summary>
+        private void ProcessSignedMessage(string data, NetworkStream networkStream, ProtocolSI protocolSI)
+        {
+            try
+            {
+                // Formato: SIGNED_MESSAGE:senderId:senderName:message:signature
+                string[] parts = data.Split(new char[] { ':' }, 5);
+                if (parts.Length == 5)
+                {
+                    int senderId = int.Parse(parts[1]);
+                    string senderName = parts[2];
+                    string message = parts[3];
+                    string signature = parts[4];
+
+                    // Verificar se é o utilizador correcto
+                    if (senderId == _userId && senderName == _username)
+                    {
+                        // Verificar assinatura digital
+                        bool isSignatureValid = Server.VerifyMessageSignature(message, signature, senderId);
+
+                        if (isSignatureValid)
+                        {
+                            // Assinatura válida - fazer broadcast da mensagem
+                            Server.BroadcastSignedMessage(data, clientID);
+                            Server.WriteSignatureLog("Message Broadcast", $"Mensagem assinada válida enviada por {senderName}: {message}", senderId);
+
+                            // Enviar ACK de sucesso
+                            byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK);
+                            networkStream.Write(ack, 0, ack.Length);
+                        }
+                        else
+                        {
+                            // Assinatura inválida - rejeitar mensagem
+                            Server.WriteSignatureLog("Message Rejected", $"Assinatura inválida de {senderName} - mensagem rejeitada", senderId);
+
+                            // Enviar ACK com erro
+                            byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK, "INVALID_SIGNATURE");
+                            networkStream.Write(ack, 0, ack.Length);
+                        }
+                    }
+                    else
+                    {
+                        // Tentativa de falsificação
+                        Server.WriteSignatureLog("Forgery Attempt", $"Tentativa de falsificação detectada - Cliente {clientID} tentou enviar como {senderName} (ID: {senderId})", _userId);
+
+                        // Enviar ACK com erro
+                        byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK, "AUTHENTICATION_ERROR");
+                        networkStream.Write(ack, 0, ack.Length);
+                    }
+                }
+                else
+                {
+                    Server.WriteSignatureLog("Invalid Format", $"Formato de mensagem assinada inválido do cliente {clientID}");
+                    byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK, "INVALID_FORMAT");
+                    networkStream.Write(ack, 0, ack.Length);
+                }
+            }
+            catch (Exception ex)
+            {
+                Server.WriteErrorLog($"Erro ao processar mensagem assinada do cliente {clientID}", ex);
+                byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK, "PROCESSING_ERROR");
+                networkStream.Write(ack, 0, ack.Length);
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Fazer broadcast das chaves públicas actualizadas para todos os clientes
+        /// </summary>
+        public void BroadcastUpdatedPublicKeys()
+        {
+            try
+            {
+                lock (Server.connectedClients)
+                {
+                    foreach (var client in Server.connectedClients)
+                    {
+                        Server.SendPublicKeysToClient(client);
+                    }
+                }
+                Server.WriteSignatureLog("Public Keys Broadcast", "Chaves públicas actualizadas enviadas para todos os clientes");
+            }
+            catch (Exception ex)
+            {
+                Server.WriteErrorLog("Erro ao fazer broadcast de chaves públicas actualizadas", ex);
             }
         }
     }

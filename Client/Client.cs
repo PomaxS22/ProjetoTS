@@ -25,6 +25,10 @@ namespace Client
         private byte[] aesKey;
         private byte[] aesIV;
 
+        // NOVO: Variáveis para assinaturas digitais
+        private RSACryptoServiceProvider rsaSignature; // Para assinar as nossas mensagens
+        private Dictionary<int, RSACryptoServiceProvider> publicKeysForVerification; // Chaves públicas de outros utilizadores
+
         // Informações do utilizador recebidas do formulário de Login
         private int loggedUserId = -1;
         private string loggedUsername = null;
@@ -33,8 +37,8 @@ namespace Client
         private Thread receiveThread;
         private volatile bool isRunning = false;
 
-        // Construtor actualizado que aceita chaves AES
-        public Client(int userId, string username, TcpClient tcpClient, NetworkStream stream, ProtocolSI protocol, byte[] aesKeyParam, byte[] aesIVParam)
+        // Construtor actualizado que aceita chaves AES e RSA para assinaturas
+        public Client(int userId, string username, TcpClient tcpClient, NetworkStream stream, ProtocolSI protocol, byte[] aesKeyParam, byte[] aesIVParam, RSACryptoServiceProvider rsaKey)
         {
             InitializeComponent();
 
@@ -51,14 +55,42 @@ namespace Client
             aesKey = aesKeyParam;
             aesIV = aesIVParam;
 
+            // NOVO: Definir chave RSA para assinaturas digitais
+            rsaSignature = rsaKey;
+            publicKeysForVerification = new Dictionary<int, RSACryptoServiceProvider>();
+
             // Actualizar título do formulário com nome de utilizador
-            this.Text = $"Chat Seguro - {loggedUsername}";
+            this.Text = $"🔐 Chat Seguro com Assinaturas - {loggedUsername}";
 
             // Etiqueta do nome de utilizador
             labelUserName.Text = loggedUsername;
 
             // Iniciar recepção de mensagens
             StartReceiving();
+
+            // NOVO: Solicitar chaves públicas de outros utilizadores
+            RequestPublicKeysFromServer();
+        }
+
+        /// <summary>
+        /// NOVO: Solicitar chaves públicas de outros utilizadores para verificação de assinaturas
+        /// </summary>
+        private void RequestPublicKeysFromServer()
+        {
+            Task.Run(() =>
+            {
+                try
+                {
+                    string request = "REQUEST_PUBLIC_KEYS";
+                    string encryptedRequest = EncryptWithAES(request);
+                    byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, encryptedRequest);
+                    networkStream.Write(packet, 0, packet.Length);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Erro ao solicitar chaves públicas: {ex.Message}");
+                }
+            });
         }
 
         // Iniciar a thread de recepção de mensagens
@@ -73,7 +105,7 @@ namespace Client
             receiveThread.Start();
         }
 
-        // Método para receber mensagens encriptadas
+        // Método para receber mensagens encriptadas e verificar assinaturas
         private void ReceiveMessages()
         {
             try
@@ -99,12 +131,24 @@ namespace Client
                                 {
                                     try
                                     {
-                                        // Obter mensagem encriptada e desencriptá-la
-                                        string encryptedMessage = protocolSI.GetStringFromData();
-                                        string decryptedMessage = DecryptWithAES(encryptedMessage);
+                                        // Obter dados encriptados
+                                        string encryptedData = protocolSI.GetStringFromData();
+                                        string decryptedData = DecryptWithAES(encryptedData);
 
-                                        // Actualizar interface com mensagem desencriptada
-                                        UpdateChatBoxSafe($"🔐 {decryptedMessage}");
+                                        // NOVO: Verificar se são chaves públicas ou mensagem normal
+                                        if (decryptedData.StartsWith("PUBLIC_KEYS:"))
+                                        {
+                                            ProcessPublicKeys(decryptedData);
+                                        }
+                                        else if (decryptedData.StartsWith("SIGNED_MESSAGE:"))
+                                        {
+                                            ProcessSignedMessage(decryptedData);
+                                        }
+                                        else
+                                        {
+                                            // Mensagem normal (compatibilidade)
+                                            UpdateChatBoxSafe($"🔐 {decryptedData}");
+                                        }
                                     }
                                     catch (Exception decryptEx)
                                     {
@@ -135,6 +179,141 @@ namespace Client
             catch (Exception ex)
             {
                 Console.WriteLine($"Erro fatal na thread de recepção para {loggedUsername}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Processar chaves públicas recebidas do servidor
+        /// </summary>
+        private void ProcessPublicKeys(string data)
+        {
+            try
+            {
+                // Formato: PUBLIC_KEYS:userId1:publicKeyXml1|userId2:publicKeyXml2|...
+                string keysData = data.Substring("PUBLIC_KEYS:".Length);
+                string[] keyEntries = keysData.Split('|');
+
+                foreach (string entry in keyEntries)
+                {
+                    if (string.IsNullOrEmpty(entry)) continue;
+
+                    string[] parts = entry.Split(new char[] { ':' }, 2);
+                    if (parts.Length == 2)
+                    {
+                        int userId = int.Parse(parts[0]);
+                        string publicKeyXml = parts[1];
+
+                        // Não adicionar a nossa própria chave
+                        if (userId != loggedUserId)
+                        {
+                            try
+                            {
+                                RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
+                                rsa.FromXmlString(publicKeyXml);
+                                publicKeysForVerification[userId] = rsa;
+
+                                Console.WriteLine($"✅ Chave pública do utilizador {userId} adicionada para verificação");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"❌ Erro ao processar chave pública do utilizador {userId}: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+
+                UpdateChatBoxSafe($"🔑 Chaves públicas actualizadas. {publicKeysForVerification.Count} utilizadores disponíveis para verificação.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Erro ao processar chaves públicas: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Processar mensagem assinada digitalmente
+        /// </summary>
+        private void ProcessSignedMessage(string data)
+        {
+            try
+            {
+                // Formato: SIGNED_MESSAGE:senderId:senderName:message:signature
+                string[] parts = data.Split(new char[] { ':' }, 5);
+                if (parts.Length == 5)
+                {
+                    int senderId = int.Parse(parts[1]);
+                    string senderName = parts[2];
+                    string message = parts[3];
+                    string signatureBase64 = parts[4];
+
+                    // Verificar assinatura digital
+                    bool isSignatureValid = VerifyDigitalSignature(message, signatureBase64, senderId);
+
+                    // Mostrar mensagem com indicação de validade da assinatura
+                    string verificationIcon = isSignatureValid ? "✅" : "❌";
+                    string verificationText = isSignatureValid ? "Assinatura Válida" : "Assinatura INVÁLIDA";
+
+                    UpdateChatBoxSafe($"{verificationIcon} {senderName}: {message} [{verificationText}]");
+
+                    // Log da verificação
+                    Console.WriteLine($"🔍 Verificação de assinatura - Remetente: {senderName}, Válida: {isSignatureValid}");
+                }
+                else
+                {
+                    UpdateChatBoxSafe("❌ Mensagem assinada com formato inválido");
+                }
+            }
+            catch (Exception ex)
+            {
+                UpdateChatBoxSafe($"❌ Erro ao processar mensagem assinada: {ex.Message}");
+                Console.WriteLine($"Erro ao processar mensagem assinada: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Verificar assinatura digital de uma mensagem
+        /// </summary>
+        private bool VerifyDigitalSignature(string message, string signatureBase64, int senderId)
+        {
+            try
+            {
+                // Verificar se temos a chave pública do remetente
+                if (!publicKeysForVerification.ContainsKey(senderId))
+                {
+                    Console.WriteLine($"⚠️ Chave pública do utilizador {senderId} não disponível para verificação");
+                    return false;
+                }
+
+                RSACryptoServiceProvider senderPublicKey = publicKeysForVerification[senderId];
+                byte[] messageBytes = Encoding.UTF8.GetBytes(message);
+                byte[] signature = Convert.FromBase64String(signatureBase64);
+
+                // Verificar assinatura usando SHA256
+                bool isValid = senderPublicKey.VerifyData(messageBytes, new SHA256CryptoServiceProvider(), signature);
+
+                return isValid;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Erro na verificação de assinatura: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Criar assinatura digital para uma mensagem
+        /// </summary>
+        private string CreateDigitalSignature(string message)
+        {
+            try
+            {
+                byte[] messageBytes = Encoding.UTF8.GetBytes(message);
+                byte[] signature = rsaSignature.SignData(messageBytes, new SHA256CryptoServiceProvider());
+                return Convert.ToBase64String(signature);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Falha ao criar assinatura digital: {ex.Message}");
             }
         }
 
@@ -182,7 +361,7 @@ namespace Client
             }
         }
 
-        // Enviar mensagem encriptada
+        // NOVO: Enviar mensagem encriptada com assinatura digital
         private void buttonSend_Click(object sender, EventArgs e)
         {
             string msg = textBoxMessage.Text.Trim();
@@ -192,22 +371,30 @@ namespace Client
             // Limpar imediatamente
             textBoxMessage.Clear();
 
-            // Enviar mensagem encriptada em segundo plano
+            // Enviar mensagem encriptada e assinada em segundo plano
             Task.Run(() =>
             {
                 try
                 {
                     if (networkStream != null && client != null && client.Connected)
                     {
-                        // Encriptar mensagem com AES
-                        string encryptedMessage = EncryptWithAES(msg);
+                        // NOVO: Criar assinatura digital da mensagem
+                        string digitalSignature = CreateDigitalSignature(msg);
 
-                        // Enviar mensagem encriptada
+                        // Formato: SIGNED_MESSAGE:senderId:senderName:message:signature
+                        string signedMessageData = $"SIGNED_MESSAGE:{loggedUserId}:{loggedUsername}:{msg}:{digitalSignature}";
+
+                        // Encriptar dados da mensagem assinada
+                        string encryptedMessage = EncryptWithAES(signedMessageData);
+
+                        // Enviar mensagem encriptada e assinada
                         byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, encryptedMessage);
                         networkStream.Write(packet, 0, packet.Length);
 
-                        // Mostrar mensagem enviada com indicador de encriptação
-                        UpdateChatBoxSafe($"Eu: {msg}");
+                        // Mostrar mensagem enviada com indicador de assinatura
+                        UpdateChatBoxSafe($"✅ Eu: {msg} [Assinado Digitalmente]");
+
+                        Console.WriteLine($"📤 Mensagem assinada e enviada: {msg}");
                     }
                 }
                 catch (Exception ex)
@@ -300,6 +487,19 @@ namespace Client
                     client = null;
                 }
 
+                // NOVO: Limpar chaves RSA
+                if (rsaSignature != null)
+                {
+                    rsaSignature.Dispose();
+                    rsaSignature = null;
+                }
+
+                foreach (var keyPair in publicKeysForVerification)
+                {
+                    keyPair.Value.Dispose();
+                }
+                publicKeysForVerification.Clear();
+
                 // Aguardar que a thread termine
                 if (receiveThread != null && receiveThread.IsAlive)
                 {
@@ -350,165 +550,45 @@ namespace Client
             }
         }
 
-        // Adiciona estes métodos à tua classe Client.cs
+        #region Efeitos Visuais e Eventos (mantidos do original)
 
-        #region Efeitos Visuais e Eventos
-
-        /// <summary>
-        /// Efeito visual quando o campo de mensagem ganha foco
-        /// </summary>
         private void textBoxMessage_Enter(object sender, EventArgs e)
         {
             TextBox txt = sender as TextBox;
             if (txt != null)
             {
-                txt.BackColor = Color.White; // Muda para branco quando focado
-
-                // Adicionar uma borda visual simulada (opcional)
+                txt.BackColor = Color.White;
                 txt.Padding = new Padding(5);
             }
         }
 
-        /// <summary>
-        /// Efeito visual quando o campo de mensagem perde foco
-        /// </summary>
         private void textBoxMessage_Leave(object sender, EventArgs e)
         {
             TextBox txt = sender as TextBox;
             if (txt != null)
             {
-                txt.BackColor = Color.FromArgb(248, 249, 250); // Volta ao cinza claro
+                txt.BackColor = Color.FromArgb(248, 249, 250);
                 txt.Padding = new Padding(0);
             }
         }
 
-        /// <summary>
-        /// Permite enviar mensagem pressionando Enter
-        /// </summary>
         private void textBoxMessage_KeyPress(object sender, KeyPressEventArgs e)
         {
             if (e.KeyChar == (char)13) // Enter key
             {
-                e.Handled = true; // Previne o "beep" do sistema
+                e.Handled = true;
 
-                // Verificar se não é Shift+Enter (para quebra de linha)
                 if (!ModifierKeys.HasFlag(Keys.Shift))
                 {
-                    // Enviar a mensagem
                     buttonSend_Click(sender, e);
                 }
                 else
                 {
-                    // Permitir quebra de linha com Shift+Enter
                     textBoxMessage.AppendText(Environment.NewLine);
                 }
             }
         }
 
-        /// <summary>
-        /// Atualiza o indicador de status online/offline
-        /// </summary>
-        private void UpdateConnectionStatus(bool isConnected)
-        {
-            if (this.InvokeRequired)
-            {
-                this.BeginInvoke(new Action(() => UpdateConnectionStatus(isConnected)));
-                return;
-            }
-
-            if (lblOnlineIndicator != null)
-            {
-                if (isConnected)
-                {
-                    lblOnlineIndicator.Text = "🟢 Conectado";
-                    lblOnlineIndicator.ForeColor = Color.FromArgb(40, 167, 69); // Verde
-                }
-                else
-                {
-                    lblOnlineIndicator.Text = "🔴 Desconectado";
-                    lblOnlineIndicator.ForeColor = Color.FromArgb(220, 53, 69); // Vermelho
-                }
-            }
-        }
-
-        /// <summary>
-        /// Atualiza o título da janela com informações do usuário
-        /// </summary>
-        private void UpdateWindowTitle()
-        {
-            if (this.InvokeRequired)
-            {
-                this.BeginInvoke(new Action(UpdateWindowTitle));
-                return;
-            }
-
-            if (!string.IsNullOrEmpty(loggedUsername))
-            {
-                this.Text = $"🔐 Chat Seguro - {loggedUsername}";
-            }
-            else
-            {
-                this.Text = "🔐 Chat Seguro";
-            }
-        }
-
         #endregion
-
-        #region Métodos Auxiliares para UI
-
-        /// <summary>
-        /// Limpa o campo de mensagem com efeito
-        /// </summary>
-        private void ClearMessageField()
-        {
-            if (this.InvokeRequired)
-            {
-                this.BeginInvoke(new Action(ClearMessageField));
-                return;
-            }
-
-            textBoxMessage.Clear();
-            textBoxMessage.Focus(); // Mantém o foco no campo
-        }
-
-        /// <summary>
-        /// Adiciona mensagem ao chat com formatação melhorada
-        /// </summary>
-        private void AddMessageToChat(string message, bool isSystemMessage = false)
-        {
-            if (this.InvokeRequired)
-            {
-                this.BeginInvoke(new Action(() => AddMessageToChat(message, isSystemMessage)));
-                return;
-            }
-
-            if (txtChatBox != null)
-            {
-                // Limpar mensagem de boas-vindas na primeira mensagem
-                if (txtChatBox.Text.Contains("Bem-vindo ao chat seguro"))
-                {
-                    txtChatBox.Clear();
-                }
-
-                string timestamp = DateTime.Now.ToString("HH:mm");
-                string formattedMessage;
-
-                if (isSystemMessage)
-                {
-                    formattedMessage = $"[{timestamp}] {message}";
-                }
-                else
-                {
-                    formattedMessage = $"[{timestamp}] {message}";
-                }
-
-                txtChatBox.AppendText(formattedMessage + Environment.NewLine);
-                txtChatBox.SelectionStart = txtChatBox.Text.Length;
-                txtChatBox.ScrollToCaret();
-            }
-        }
-
-        #endregion
-
     }
 }

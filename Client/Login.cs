@@ -29,7 +29,7 @@ namespace Client
         {
             InitializeComponent();
 
-            // Gerar chaves RSA (simples)
+            // Gerar chaves RSA (simples) - IMPORTANTE: Guardar para assinaturas
             rsa = new RSACryptoServiceProvider(2048);
         }
 
@@ -48,7 +48,8 @@ namespace Client
             if (AuthenticateUserWithEncryption(username, password))
             {
                 // Login bem-sucedido - abrir formulário principal do cliente com encriptação
-                Client mainForm = new Client(loggedUserId, loggedUsername, client, networkStream, protocolSI, aesKey, aesIV);
+                // NOVO: Passar também as chaves RSA para assinaturas digitais
+                Client mainForm = new Client(loggedUserId, loggedUsername, client, networkStream, protocolSI, aesKey, aesIV, rsa);
 
                 this.Hide();
                 mainForm.ShowDialog();
@@ -98,7 +99,7 @@ namespace Client
         }
 
         /// <summary>
-        /// Encriptação simples: Autenticar com RSA+AES
+        /// Encriptação simples: Autenticar com RSA+AES + Registo de Chave Pública para Assinaturas
         /// </summary>
         private bool AuthenticateUserWithEncryption(string username, string password)
         {
@@ -135,6 +136,14 @@ namespace Client
                     {
                         loggedUserId = int.Parse(parts[0]);
                         loggedUsername = parts[1];
+
+                        // NOVO: Passo 5 - Registar chave pública RSA no servidor para assinaturas
+                        if (!RegisterPublicKeyForSignatures())
+                        {
+                            MessageBox.Show("Falha ao registar chave para assinaturas.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            // Continuar mesmo assim - não é crítico
+                        }
+
                         return true;
                     }
                 }
@@ -144,6 +153,40 @@ namespace Client
             catch (Exception ex)
             {
                 MessageBox.Show("Erro ao autenticar: " + ex.Message, "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// NOVO: Registar chave pública RSA no servidor para validação de assinaturas
+        /// </summary>
+        private bool RegisterPublicKeyForSignatures()
+        {
+            try
+            {
+                // Enviar chave pública RSA para o servidor guardar para validações futuras
+                string publicKeyXml = rsa.ToXmlString(false); // Apenas chave pública
+                string keyData = $"REGISTER_SIGNATURE_KEY:{loggedUserId}:{publicKeyXml}";
+                string encryptedKeyData = EncryptWithAES(keyData);
+
+                byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, encryptedKeyData);
+                networkStream.Write(packet, 0, packet.Length);
+
+                // Aguardar confirmação
+                networkStream.Read(protocolSI.Buffer, 0, protocolSI.Buffer.Length);
+
+                if (protocolSI.GetCmdType() == ProtocolSICmdType.ACK)
+                {
+                    string response = protocolSI.GetStringFromData();
+                    string decryptedResponse = DecryptWithAES(response);
+                    return decryptedResponse == "SIGNATURE_KEY_REGISTERED";
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Erro ao registar chave para assinaturas: {ex.Message}");
                 return false;
             }
         }
@@ -393,8 +436,6 @@ namespace Client
             }
         }
 
-        // Adiciona estes métodos à tua classe Login.cs - AI MADE
-
         #region Efeitos de Foco nos TextBoxes
 
         private void txtUsername_Enter(object sender, EventArgs e)
@@ -434,7 +475,5 @@ namespace Client
         }
 
         #endregion
-
     }
-
 }
