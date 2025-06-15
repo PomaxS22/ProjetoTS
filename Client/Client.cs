@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Security.Cryptography;
 
 namespace Client
 {
@@ -20,6 +21,10 @@ namespace Client
         ProtocolSI protocolSI;
         TcpClient client;
 
+        // Simple encryption variables
+        private byte[] aesKey;
+        private byte[] aesIV;
+
         // User information received from Login form
         private int loggedUserId = -1;
         private string loggedUsername = null;
@@ -28,8 +33,8 @@ namespace Client
         private Thread receiveThread;
         private volatile bool isRunning = false;
 
-        // New constructor that accepts authentication parameters from Login form
-        public Client(int userId, string username, TcpClient tcpClient, NetworkStream stream, ProtocolSI protocol)
+        // Updated constructor that accepts AES keys
+        public Client(int userId, string username, TcpClient tcpClient, NetworkStream stream, ProtocolSI protocol, byte[] aesKeyParam, byte[] aesIVParam)
         {
             InitializeComponent();
 
@@ -42,8 +47,12 @@ namespace Client
             networkStream = stream;
             protocolSI = protocol;
 
+            // Set encryption keys
+            aesKey = aesKeyParam;
+            aesIV = aesIVParam;
+
             // Update form title with username
-            this.Text = $"Chat - {loggedUsername}";
+            this.Text = $"Chat Seguro - {loggedUsername}";
 
             // Username Label
             labelUserName.Text = loggedUsername;
@@ -64,7 +73,7 @@ namespace Client
             receiveThread.Start();
         }
 
-        // Method to receive messages - COMPLETELY ISOLATED VERSION
+        // Method to receive encrypted messages
         private void ReceiveMessages()
         {
             try
@@ -88,10 +97,20 @@ namespace Client
                                 // Check message type
                                 if (protocolSI.GetCmdType() == ProtocolSICmdType.DATA)
                                 {
-                                    string message = protocolSI.GetStringFromData();
+                                    try
+                                    {
+                                        // Get encrypted message and decrypt it
+                                        string encryptedMessage = protocolSI.GetStringFromData();
+                                        string decryptedMessage = DecryptWithAES(encryptedMessage);
 
-                                    // Update UI with received message - THREAD SAFE
-                                    UpdateChatBoxSafe(message);
+                                        // Update UI with decrypted message
+                                        UpdateChatBoxSafe($"🔐 {decryptedMessage}");
+                                    }
+                                    catch (Exception decryptEx)
+                                    {
+                                        // If decryption fails, show as encrypted
+                                        UpdateChatBoxSafe($"[ENCRYPTED MESSAGE - Error: {decryptEx.Message}]");
+                                    }
 
                                     // Send ACK
                                     byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK);
@@ -119,7 +138,7 @@ namespace Client
             }
         }
 
-        // COMPLETELY SAFE: Thread-safe method to update chat box
+        // Thread-safe method to update chat box
         private void UpdateChatBoxSafe(string message)
         {
             try
@@ -135,7 +154,9 @@ namespace Client
                         {
                             if (!this.IsDisposed && txtChatBox != null)
                             {
-                                txtChatBox.AppendText(message + Environment.NewLine);
+                                // Add timestamp
+                                string timestampedMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";
+                                txtChatBox.AppendText(timestampedMessage + Environment.NewLine);
                                 txtChatBox.SelectionStart = txtChatBox.Text.Length;
                                 txtChatBox.ScrollToCaret();
                             }
@@ -147,7 +168,9 @@ namespace Client
                 {
                     if (txtChatBox != null)
                     {
-                        txtChatBox.AppendText(message + Environment.NewLine);
+                        // Add timestamp
+                        string timestampedMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";
+                        txtChatBox.AppendText(timestampedMessage + Environment.NewLine);
                         txtChatBox.SelectionStart = txtChatBox.Text.Length;
                         txtChatBox.ScrollToCaret();
                     }
@@ -159,7 +182,7 @@ namespace Client
             }
         }
 
-        // FIRE AND FORGET: Non-blocking send message
+        // Send encrypted message
         private void buttonSend_Click(object sender, EventArgs e)
         {
             string msg = textBoxMessage.Text.Trim();
@@ -169,24 +192,28 @@ namespace Client
             // Clear immediately
             textBoxMessage.Clear();
 
-            // Send in background - no waiting for ACK
+            // Send encrypted message in background
             Task.Run(() =>
             {
                 try
                 {
                     if (networkStream != null && client != null && client.Connected)
                     {
-                        byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, msg);
+                        // Encrypt message with AES
+                        string encryptedMessage = EncryptWithAES(msg);
+
+                        // Send encrypted message
+                        byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, encryptedMessage);
                         networkStream.Write(packet, 0, packet.Length);
 
-                        // Show sent message immediately without waiting for ACK
+                        // Show sent message with encryption indicator
                         UpdateChatBoxSafe($"Eu: {msg}");
                     }
                 }
                 catch (Exception ex)
                 {
                     // Show error if send fails
-                    UpdateChatBoxSafe($"[ERRO] Falha ao enviar: {msg}");
+                    UpdateChatBoxSafe($"[ERRO] Falha ao enviar: {msg} - {ex.Message}");
                     Console.WriteLine($"Send error for {loggedUsername}: {ex.Message}");
                 }
             });
@@ -195,7 +222,55 @@ namespace Client
             textBoxMessage.Focus();
         }
 
-        // CLEAN: Method to close client connection
+        /// <summary>
+        /// Simple AES encryption for messages
+        /// </summary>
+        private string EncryptWithAES(string plainText)
+        {
+            try
+            {
+                using (AesCryptoServiceProvider aes = new AesCryptoServiceProvider())
+                {
+                    aes.Key = aesKey;
+                    aes.IV = aesIV;
+
+                    ICryptoTransform encryptor = aes.CreateEncryptor();
+                    byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
+                    byte[] encryptedBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
+                    return Convert.ToBase64String(encryptedBytes);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Encryption failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Simple AES decryption for messages
+        /// </summary>
+        private string DecryptWithAES(string encryptedText)
+        {
+            try
+            {
+                using (AesCryptoServiceProvider aes = new AesCryptoServiceProvider())
+                {
+                    aes.Key = aesKey;
+                    aes.IV = aesIV;
+
+                    ICryptoTransform decryptor = aes.CreateDecryptor();
+                    byte[] encryptedBytes = Convert.FromBase64String(encryptedText);
+                    byte[] decryptedBytes = decryptor.TransformFinalBlock(encryptedBytes, 0, encryptedBytes.Length);
+                    return Encoding.UTF8.GetString(decryptedBytes);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Decryption failed: {ex.Message}");
+            }
+        }
+
+        // Method to close client connection
         private void CloseClient()
         {
             try
@@ -243,7 +318,7 @@ namespace Client
             CloseClient();
         }
 
-        // COMPLETELY ISOLATED: Create new login in separate process
+        // Create new login (separate process)
         private void btnAddUser_Click(object sender, EventArgs e)
         {
             try
