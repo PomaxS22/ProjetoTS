@@ -452,35 +452,6 @@ namespace Client
             }
         }
 
-        /// <summary>
-        /// Adiciona animação sutil ao botão de enviar
-        /// </summary>
-        private void AnimateSendButton()
-        {
-            if (this.InvokeRequired)
-            {
-                this.BeginInvoke(new Action(AnimateSendButton));
-                return;
-            }
-
-            // Simular feedback visual do envio
-            var originalColor = buttonSend.BackColor;
-            buttonSend.BackColor = Color.FromArgb(40, 167, 69); // Verde temporário
-            buttonSend.Text = "✅ Enviado";
-
-            // Timer para voltar ao normal
-            var timer = new System.Windows.Forms.Timer();
-            timer.Interval = 500; // 500ms
-            timer.Tick += (s, e) =>
-            {
-                buttonSend.BackColor = originalColor;
-                buttonSend.Text = "📤 Enviar";
-                timer.Stop();
-                timer.Dispose();
-            };
-            timer.Start();
-        }
-
         #endregion
 
         #region Métodos Auxiliares para UI
@@ -519,7 +490,7 @@ namespace Client
                     txtChatBox.Clear();
                 }
 
-                string timestamp = DateTime.Now.ToString("HH:mm:ss");
+                string timestamp = DateTime.Now.ToString("HH:mm");
                 string formattedMessage;
 
                 if (isSystemMessage)

@@ -89,7 +89,6 @@
             this.txtChatBox.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
             this.txtChatBox.Size = new System.Drawing.Size(810, 309);
             this.txtChatBox.TabIndex = 1;
-            this.txtChatBox.Text = "💬 Bem-vindo ao chat seguro! As mensagens aparecerão aqui...";
             // 
             // lblChatTitle
             // 
