@@ -53,6 +53,7 @@
             // panelMain
             // 
             this.panelMain.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(240)))), ((int)(((byte)(244)))), ((int)(((byte)(248)))));
+            this.panelMain.Controls.Add(this.lblOnlineIndicator);
             this.panelMain.Controls.Add(this.panelChat);
             this.panelMain.Controls.Add(this.panelMessageInput);
             this.panelMain.Controls.Add(this.panelHeader);
@@ -190,7 +191,6 @@
             // 
             // panelUserInfo
             // 
-            this.panelUserInfo.Controls.Add(this.lblOnlineIndicator);
             this.panelUserInfo.Controls.Add(this.labelUserName);
             this.panelUserInfo.Controls.Add(this.lblWelcome);
             this.panelUserInfo.Dock = System.Windows.Forms.DockStyle.Left;
@@ -204,7 +204,7 @@
             this.lblOnlineIndicator.AutoSize = true;
             this.lblOnlineIndicator.Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblOnlineIndicator.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(40)))), ((int)(((byte)(167)))), ((int)(((byte)(69)))));
-            this.lblOnlineIndicator.Location = new System.Drawing.Point(230, 20);
+            this.lblOnlineIndicator.Location = new System.Drawing.Point(22, 4);
             this.lblOnlineIndicator.Name = "lblOnlineIndicator";
             this.lblOnlineIndicator.Size = new System.Drawing.Size(78, 13);
             this.lblOnlineIndicator.TabIndex = 2;
@@ -215,7 +215,7 @@
             this.labelUserName.AutoSize = true;
             this.labelUserName.Font = new System.Drawing.Font("Segoe UI", 16F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.labelUserName.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(123)))), ((int)(((byte)(255)))));
-            this.labelUserName.Location = new System.Drawing.Point(100, 8);
+            this.labelUserName.Location = new System.Drawing.Point(64, 8);
             this.labelUserName.Name = "labelUserName";
             this.labelUserName.Size = new System.Drawing.Size(118, 30);
             this.labelUserName.TabIndex = 1;
@@ -247,6 +247,7 @@
             this.Text = "🔐 Chat Seguro";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Client_FormClosing);
             this.panelMain.ResumeLayout(false);
+            this.panelMain.PerformLayout();
             this.panelChat.ResumeLayout(false);
             this.panelChat.PerformLayout();
             this.panelMessageInput.ResumeLayout(false);
