@@ -241,7 +241,7 @@
             this.MinimumSize = new System.Drawing.Size(800, 500);
             this.Name = "Client";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "🔐 Chat Seguro";
+            this.Text = "Chat";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Client_FormClosing);
             this.panelMain.ResumeLayout(false);
             this.panelMain.PerformLayout();

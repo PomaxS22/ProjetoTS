@@ -1,8 +1,6 @@
 ﻿using EI.SI;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Net;
@@ -21,15 +19,15 @@ namespace Client
         ProtocolSI protocolSI;
         TcpClient client;
 
-        // Variáveis de encriptação simples
+        // Variáveis de criptografia
         private byte[] aesKey;
         private byte[] aesIV;
 
-        //  Variáveis para assinaturas digitais
+        // Variáveis para assinaturas digitais
         private RSACryptoServiceProvider rsaSignature; // Para assinar as nossas mensagens
         private Dictionary<int, RSACryptoServiceProvider> publicKeysForVerification; // Chaves públicas de outros utilizadores
 
-        // Informações do utilizador recebidas do formulário de Login
+        // Dados do utilizador
         private int loggedUserId = -1;
         private string loggedUsername = null;
 
@@ -37,12 +35,11 @@ namespace Client
         private Thread receiveThread;
         private volatile bool isRunning = false;
 
-        // Construtor actualizado que aceita chaves AES e RSA para assinaturas
         public Client(int userId, string username, TcpClient tcpClient, NetworkStream stream, ProtocolSI protocol, byte[] aesKeyParam, byte[] aesIVParam, RSACryptoServiceProvider rsaKey)
         {
             InitializeComponent();
 
-            // Definir informações do utilizador
+            // Definir dados do utilizador
             loggedUserId = userId;
             loggedUsername = username;
 
@@ -51,30 +48,26 @@ namespace Client
             networkStream = stream;
             protocolSI = protocol;
 
-            // Definir chaves de encriptação
+            // Definir chaves de criptografia
             aesKey = aesKeyParam;
             aesIV = aesIVParam;
 
-            //  Definir chave RSA para assinaturas digitais
+            // Definir chave RSA para assinaturas
             rsaSignature = rsaKey;
             publicKeysForVerification = new Dictionary<int, RSACryptoServiceProvider>();
 
-            // Actualizar título do formulário com nome de utilizador
-            this.Text = $"🔐 Chat Seguro com Assinaturas - {loggedUsername}";
-
-            // Etiqueta do nome de utilizador
+            // Actualizar interface
+            this.Text = $"Chat - {loggedUsername}";
             labelUserName.Text = loggedUsername;
 
             // Iniciar recepção de mensagens
             StartReceiving();
 
-            //  Solicitar chaves públicas de outros utilizadores
+            // Solicitar chaves públicas de outros utilizadores
             RequestPublicKeysFromServer();
         }
 
-        /// <summary>
-        ///  Solicitar chaves públicas de outros utilizadores para verificação de assinaturas
-        /// </summary>
+        // Solicitar chaves públicas para verificar assinaturas
         private void RequestPublicKeysFromServer()
         {
             Task.Run(() =>
@@ -85,6 +78,7 @@ namespace Client
                     string encryptedRequest = EncryptWithAES(request);
                     byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, encryptedRequest);
                     networkStream.Write(packet, 0, packet.Length);
+                    Console.WriteLine("Solicitadas chaves públicas do servidor");
                 }
                 catch (Exception ex)
                 {
@@ -93,7 +87,7 @@ namespace Client
             });
         }
 
-        // Iniciar a thread de recepção de mensagens
+        // Iniciar thread de recepção de mensagens
         private void StartReceiving()
         {
             isRunning = true;
@@ -105,7 +99,7 @@ namespace Client
             receiveThread.Start();
         }
 
-        // Método para receber mensagens encriptadas e verificar assinaturas
+        // Receber e processar mensagens
         private void ReceiveMessages()
         {
             try
@@ -114,28 +108,24 @@ namespace Client
                 {
                     try
                     {
-                        // Verificar se há dados disponíveis
                         if (networkStream.DataAvailable)
                         {
-                            // Ler mensagem
                             byte[] buffer = new byte[protocolSI.Buffer.Length];
                             int bytesRead = networkStream.Read(buffer, 0, buffer.Length);
 
                             if (bytesRead > 0)
                             {
-                                // Copiar para buffer do protocolo
                                 Array.Copy(buffer, protocolSI.Buffer, Math.Min(buffer.Length, protocolSI.Buffer.Length));
 
-                                // Verificar tipo de mensagem
                                 if (protocolSI.GetCmdType() == ProtocolSICmdType.DATA)
                                 {
                                     try
                                     {
-                                        // Obter dados encriptados
+                                        // Desencriptar dados recebidos
                                         string encryptedData = protocolSI.GetStringFromData();
                                         string decryptedData = DecryptWithAES(encryptedData);
 
-                                        //  Verificar se são chaves públicas ou mensagem normal
+                                        // Processar diferentes tipos de dados
                                         if (decryptedData.StartsWith("PUBLIC_KEYS:"))
                                         {
                                             ProcessPublicKeys(decryptedData);
@@ -152,39 +142,34 @@ namespace Client
                                     }
                                     catch (Exception decryptEx)
                                     {
-                                        // Se a desencriptação falhar, mostrar como encriptada
                                         UpdateChatBoxSafe($"[MENSAGEM ENCRIPTADA - Erro: {decryptEx.Message}]");
                                     }
 
-                                    // Enviar ACK
+                                    // Enviar confirmação
                                     byte[] ack = protocolSI.Make(ProtocolSICmdType.ACK);
                                     networkStream.Write(ack, 0, ack.Length);
                                 }
                             }
                         }
-
-                        // Pequena pausa para não sobrecarregar o CPU
-                        Thread.Sleep(100);
+                        Thread.Sleep(100); // Pequena pausa
                     }
                     catch (Exception ex)
                     {
-                        if (isRunning) // Apenas registar se ainda devemos estar a correr
+                        if (isRunning)
                         {
-                            Console.WriteLine($"Erro na thread de recepção para {loggedUsername}: {ex.Message}");
+                            Console.WriteLine($"Erro na recepção para {loggedUsername}: {ex.Message}");
                         }
-                        Thread.Sleep(1000); // Aguardar um pouco antes de tentar novamente
+                        Thread.Sleep(1000);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Erro fatal na thread de recepção para {loggedUsername}: {ex.Message}");
+                Console.WriteLine($"Erro fatal na recepção para {loggedUsername}: {ex.Message}");
             }
         }
 
-        /// <summary>
-        ///  Processar chaves públicas recebidas do servidor
-        /// </summary>
+        // Processar chaves públicas recebidas do servidor
         private void ProcessPublicKeys(string data)
         {
             try
@@ -193,6 +178,7 @@ namespace Client
                 string keysData = data.Substring("PUBLIC_KEYS:".Length);
                 string[] keyEntries = keysData.Split('|');
 
+                int keysProcessed = 0;
                 foreach (string entry in keyEntries)
                 {
                     if (string.IsNullOrEmpty(entry)) continue;
@@ -211,18 +197,18 @@ namespace Client
                                 RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
                                 rsa.FromXmlString(publicKeyXml);
                                 publicKeysForVerification[userId] = rsa;
-
-                                Console.WriteLine($"Chave pública do utilizador {userId} adicionada para verificação");
+                                keysProcessed++;
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"Erro ao processar chave pública do utilizador {userId}: {ex.Message}");
+                                Console.WriteLine($"Erro ao processar chave do utilizador {userId}: {ex.Message}");
                             }
                         }
                     }
                 }
 
-                UpdateChatBoxSafe($"🔑 Chaves públicas actualizadas. {publicKeysForVerification.Count} utilizadores disponíveis para verificação.");
+                Console.WriteLine($"{keysProcessed} chaves públicas recebidas e processadas");
+                UpdateChatBoxSafe($"Chaves actualizadas. {publicKeysForVerification.Count} utilizadores disponíveis.");
             }
             catch (Exception ex)
             {
@@ -230,9 +216,7 @@ namespace Client
             }
         }
 
-        /// <summary>
-        ///  Processar mensagem assinada digitalmente
-        /// </summary>
+        // Processar mensagem assinada digitalmente
         private void ProcessSignedMessage(string data)
         {
             try
@@ -249,13 +233,9 @@ namespace Client
                     // Verificar assinatura digital
                     bool isSignatureValid = VerifyDigitalSignature(message, signatureBase64, senderId);
 
-                    // Mostrar mensagem com indicação de validade da assinatura
+                    // Mostrar mensagem com indicação da validade da assinatura
                     string verificationIcon = isSignatureValid ? "✅" : "❌";
-
                     UpdateChatBoxSafe($"{verificationIcon} {senderName}: {message}");
-
-                    // Log da verificação
-                    Console.WriteLine($"Verificação de assinatura - Remetente: {senderName}, Válida: {isSignatureValid}");
                 }
                 else
                 {
@@ -265,13 +245,10 @@ namespace Client
             catch (Exception ex)
             {
                 UpdateChatBoxSafe($"Erro ao processar mensagem assinada: {ex.Message}");
-                Console.WriteLine($"Erro ao processar mensagem assinada: {ex.Message}");
             }
         }
 
-        /// <summary>
-        ///  Verificar assinatura digital de uma mensagem
-        /// </summary>
+        // Verificar assinatura digital de uma mensagem
         private bool VerifyDigitalSignature(string message, string signatureBase64, int senderId)
         {
             try
@@ -279,7 +256,7 @@ namespace Client
                 // Verificar se temos a chave pública do remetente
                 if (!publicKeysForVerification.ContainsKey(senderId))
                 {
-                    Console.WriteLine($"Chave pública do utilizador {senderId} não disponível para verificação");
+                    Console.WriteLine($"Chave pública do utilizador {senderId} não disponível");
                     return false;
                 }
 
@@ -289,7 +266,7 @@ namespace Client
 
                 // Verificar assinatura usando SHA256
                 bool isValid = senderPublicKey.VerifyData(messageBytes, new SHA256CryptoServiceProvider(), signature);
-
+                Console.WriteLine($"Verificação de assinatura do utilizador {senderId}: {(isValid ? "VÁLIDA" : "INVÁLIDA")}");
                 return isValid;
             }
             catch (Exception ex)
@@ -299,9 +276,7 @@ namespace Client
             }
         }
 
-        /// <summary>
-        ///  Criar assinatura digital para uma mensagem
-        /// </summary>
+        // Criar assinatura digital para uma mensagem
         private string CreateDigitalSignature(string message)
         {
             try
@@ -312,11 +287,11 @@ namespace Client
             }
             catch (Exception ex)
             {
-                throw new Exception($"Falha ao criar assinatura digital: {ex.Message}");
+                throw new Exception($"Falha ao criar assinatura: {ex.Message}");
             }
         }
 
-        // Método thread-safe para actualizar caixa de chat
+        // Actualizar caixa de chat de forma thread-safe
         private void UpdateChatBoxSafe(string message)
         {
             try
@@ -332,21 +307,19 @@ namespace Client
                         {
                             if (!this.IsDisposed && txtChatBox != null)
                             {
-                                // Adicionar timestamp
                                 string timestampedMessage = $"[{DateTime.Now:HH:mm}] {message}";
                                 txtChatBox.AppendText(timestampedMessage + Environment.NewLine);
                                 txtChatBox.SelectionStart = txtChatBox.Text.Length;
                                 txtChatBox.ScrollToCaret();
                             }
                         }
-                        catch { /* Ignorar erros de actualização da interface */ }
+                        catch { }
                     }));
                 }
                 else
                 {
                     if (txtChatBox != null)
                     {
-                        // Adicionar timestamp
                         string timestampedMessage = $"[{DateTime.Now:HH:mm}] {message}";
                         txtChatBox.AppendText(timestampedMessage + Environment.NewLine);
                         txtChatBox.SelectionStart = txtChatBox.Text.Length;
@@ -356,61 +329,57 @@ namespace Client
             }
             catch
             {
-                // Ignorar todos os erros para prevenir travamentos
+                // Ignorar erros para prevenir travamentos
             }
         }
 
-        //  Enviar mensagem encriptada com assinatura digital
+        // Enviar mensagem com assinatura digital
         private void buttonSend_Click(object sender, EventArgs e)
         {
             string msg = textBoxMessage.Text.Trim();
             if (string.IsNullOrWhiteSpace(msg))
                 return;
 
-            // Limpar imediatamente
+            // Limpar campo de texto imediatamente
             textBoxMessage.Clear();
 
-            // Enviar mensagem encriptada e assinada em segundo plano
+            // Enviar mensagem em background
             Task.Run(() =>
             {
                 try
                 {
                     if (networkStream != null && client != null && client.Connected)
                     {
-                        //  Criar assinatura digital da mensagem
+                        // Criar assinatura digital da mensagem
                         string digitalSignature = CreateDigitalSignature(msg);
+                        Console.WriteLine($"Mensagem assinada criada: {msg}");
 
-                        // Formato: SIGNED_MESSAGE:senderId:senderName:message:signature
+                        // Formato da mensagem assinada
                         string signedMessageData = $"SIGNED_MESSAGE:{loggedUserId}:{loggedUsername}:{msg}:{digitalSignature}";
 
-                        // Encriptar dados da mensagem assinada
+                        // Encriptar e enviar
                         string encryptedMessage = EncryptWithAES(signedMessageData);
-
-                        // Enviar mensagem encriptada e assinada
                         byte[] packet = protocolSI.Make(ProtocolSICmdType.DATA, encryptedMessage);
                         networkStream.Write(packet, 0, packet.Length);
 
-                        // Mostrar mensagem enviada com indicador de assinatura
-                        UpdateChatBoxSafe($"✅ Eu: {msg}");
+                        Console.WriteLine($"Mensagem enviada: {msg}");
 
-                        Console.WriteLine($"Mensagem assinada e enviada: {msg}");
+                        // Mostrar mensagem enviada
+                        UpdateChatBoxSafe($"Eu: {msg}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    // Mostrar erro se o envio falhar
                     UpdateChatBoxSafe($"[ERRO] Falha ao enviar: {msg} - {ex.Message}");
-                    Console.WriteLine($"Erro de envio para {loggedUsername}: {ex.Message}");
+                    Console.WriteLine($"Erro de envio: {ex.Message}");
                 }
             });
 
-            // Focar de volta na entrada de mensagem
+            // Voltar foco para campo de texto
             textBoxMessage.Focus();
         }
 
-        /// <summary>
-        /// Encriptação AES simples para mensagens
-        /// </summary>
+        // Encriptar texto com AES
         private string EncryptWithAES(string plainText)
         {
             try
@@ -419,7 +388,6 @@ namespace Client
                 {
                     aes.Key = aesKey;
                     aes.IV = aesIV;
-
                     ICryptoTransform encryptor = aes.CreateEncryptor();
                     byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
                     byte[] encryptedBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
@@ -432,9 +400,7 @@ namespace Client
             }
         }
 
-        /// <summary>
-        /// Desencriptação AES simples para mensagens
-        /// </summary>
+        // Desencriptar texto com AES
         private string DecryptWithAES(string encryptedText)
         {
             try
@@ -443,7 +409,6 @@ namespace Client
                 {
                     aes.Key = aesKey;
                     aes.IV = aesIV;
-
                     ICryptoTransform decryptor = aes.CreateDecryptor();
                     byte[] encryptedBytes = Convert.FromBase64String(encryptedText);
                     byte[] decryptedBytes = decryptor.TransformFinalBlock(encryptedBytes, 0, encryptedBytes.Length);
@@ -456,14 +421,14 @@ namespace Client
             }
         }
 
-        // Método para fechar ligação do cliente
+        // Fechar ligação do cliente
         private void CloseClient()
         {
             try
             {
                 isRunning = false;
 
-                // Fechar recursos de rede primeiro
+                // Fechar recursos de rede
                 if (networkStream != null)
                 {
                     try
@@ -474,7 +439,7 @@ namespace Client
                             networkStream.Write(eot, 0, eot.Length);
                         }
                     }
-                    catch { /* Ignorar */ }
+                    catch { }
 
                     networkStream.Close();
                     networkStream = null;
@@ -486,7 +451,7 @@ namespace Client
                     client = null;
                 }
 
-                //  Limpar chaves RSA
+                // Limpar chaves RSA
                 if (rsaSignature != null)
                 {
                     rsaSignature.Dispose();
@@ -499,7 +464,7 @@ namespace Client
                 }
                 publicKeysForVerification.Clear();
 
-                // Aguardar que a thread termine
+                // Aguardar fim da thread
                 if (receiveThread != null && receiveThread.IsAlive)
                 {
                     receiveThread.Join(1000);
@@ -517,12 +482,12 @@ namespace Client
             CloseClient();
         }
 
-        // Criar novo login (processo separado)
+        // Abrir nova janela de login
         private void btnAddUser_Click(object sender, EventArgs e)
         {
             try
             {
-                // Criar novo formulário de login numa thread separada para evitar interferência
+                // Criar nova janela de login numa thread separada
                 Thread newLoginThread = new Thread(() =>
                 {
                     try

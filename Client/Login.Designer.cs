@@ -171,9 +171,9 @@
             this.lblSubtitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(108)))), ((int)(((byte)(117)))), ((int)(((byte)(125)))));
             this.lblSubtitle.Location = new System.Drawing.Point(30, 55);
             this.lblSubtitle.Name = "lblSubtitle";
-            this.lblSubtitle.Size = new System.Drawing.Size(125, 15);
+            this.lblSubtitle.Size = new System.Drawing.Size(86, 15);
             this.lblSubtitle.TabIndex = 1;
-            this.lblSubtitle.Text = "Acesso ao chat seguro";
+            this.lblSubtitle.Text = "Acesso ao chat";
             // 
             // lblTitle
             // 
@@ -198,8 +198,9 @@
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.MaximizeBox = false;
             this.Name = "Login";
+            this.SizeGripStyle = System.Windows.Forms.SizeGripStyle.Hide;
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Chat Seguro - Login";
+            this.Text = "Chat - Login";
             this.panelMain.ResumeLayout(false);
             this.panelContent.ResumeLayout(false);
             this.panelContent.PerformLayout();
