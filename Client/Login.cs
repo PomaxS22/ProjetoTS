@@ -435,45 +435,5 @@ namespace Client
                 throw;
             }
         }
-
-        #region Efeitos de Foco nos TextBoxes
-
-        private void txtUsername_Enter(object sender, EventArgs e)
-        {
-            TextBox txt = sender as TextBox;
-            if (txt != null)
-            {
-                txt.BackColor = Color.FromArgb(255, 255, 255); // Branco quando focado
-            }
-        }
-
-        private void txtUsername_Leave(object sender, EventArgs e)
-        {
-            TextBox txt = sender as TextBox;
-            if (txt != null)
-            {
-                txt.BackColor = Color.FromArgb(248, 249, 250); // Cinza claro quando não focado
-            }
-        }
-
-        private void txtPassword_Enter(object sender, EventArgs e)
-        {
-            TextBox txt = sender as TextBox;
-            if (txt != null)
-            {
-                txt.BackColor = Color.FromArgb(255, 255, 255); // Branco quando focado
-            }
-        }
-
-        private void txtPassword_Leave(object sender, EventArgs e)
-        {
-            TextBox txt = sender as TextBox;
-            if (txt != null)
-            {
-                txt.BackColor = Color.FromArgb(248, 249, 250); // Cinza claro quando não focado
-            }
-        }
-
-        #endregion
     }
 }

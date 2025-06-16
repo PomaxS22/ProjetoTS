@@ -156,9 +156,6 @@
             this.textBoxMessage.Name = "textBoxMessage";
             this.textBoxMessage.Size = new System.Drawing.Size(690, 27);
             this.textBoxMessage.TabIndex = 1;
-            this.textBoxMessage.Enter += new System.EventHandler(this.textBoxMessage_Enter);
-            this.textBoxMessage.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.textBoxMessage_KeyPress);
-            this.textBoxMessage.Leave += new System.EventHandler(this.textBoxMessage_Leave);
             // 
             // lblMessageHint
             // 

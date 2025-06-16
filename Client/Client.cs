@@ -548,46 +548,5 @@ namespace Client
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
-        #region Efeitos Visuais e Eventos (mantidos do original)
-
-        private void textBoxMessage_Enter(object sender, EventArgs e)
-        {
-            TextBox txt = sender as TextBox;
-            if (txt != null)
-            {
-                txt.BackColor = Color.White;
-                txt.Padding = new Padding(5);
-            }
-        }
-
-        private void textBoxMessage_Leave(object sender, EventArgs e)
-        {
-            TextBox txt = sender as TextBox;
-            if (txt != null)
-            {
-                txt.BackColor = Color.FromArgb(248, 249, 250);
-                txt.Padding = new Padding(0);
-            }
-        }
-
-        private void textBoxMessage_KeyPress(object sender, KeyPressEventArgs e)
-        {
-            if (e.KeyChar == (char)13) // Enter key
-            {
-                e.Handled = true;
-
-                if (!ModifierKeys.HasFlag(Keys.Shift))
-                {
-                    buttonSend_Click(sender, e);
-                }
-                else
-                {
-                    textBoxMessage.AppendText(Environment.NewLine);
-                }
-            }
-        }
-
-        #endregion
     }
 }
