@@ -48,7 +48,7 @@ namespace Client
             if (AuthenticateUserWithEncryption(username, password))
             {
                 // Login bem-sucedido - abrir formulário principal do cliente com encriptação
-                // NOVO: Passar também as chaves RSA para assinaturas digitais
+                //  Passar também as chaves RSA para assinaturas digitais
                 Client mainForm = new Client(loggedUserId, loggedUsername, client, networkStream, protocolSI, aesKey, aesIV, rsa);
 
                 this.Hide();
@@ -137,7 +137,7 @@ namespace Client
                         loggedUserId = int.Parse(parts[0]);
                         loggedUsername = parts[1];
 
-                        // NOVO: Passo 5 - Registar chave pública RSA no servidor para assinaturas
+                        //  Passo 5 - Registar chave pública RSA no servidor para assinaturas
                         if (!RegisterPublicKeyForSignatures())
                         {
                             MessageBox.Show("Falha ao registar chave para assinaturas.", "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -158,7 +158,7 @@ namespace Client
         }
 
         /// <summary>
-        /// NOVO: Registar chave pública RSA no servidor para validação de assinaturas
+        ///  Registar chave pública RSA no servidor para validação de assinaturas
         /// </summary>
         private bool RegisterPublicKeyForSignatures()
         {
@@ -292,7 +292,7 @@ namespace Client
                     Array.Copy(decryptedData, 0, aesKey, 0, 32);
                     Array.Copy(decryptedData, 32, aesIV, 0, 16);
 
-                    Console.WriteLine("🔐 Chaves AES recebidas e desencriptadas!");
+                    Console.WriteLine("Chaves AES recebidas e desencriptadas!");
                     return true;
                 }
 

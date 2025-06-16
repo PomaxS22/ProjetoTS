@@ -30,7 +30,7 @@ namespace Server
         // Lista estática para armazenar os gestores de cliente
         public static readonly List<ClientHandler> connectedClients = new List<ClientHandler>();
 
-        // NOVO: Armazenar chaves públicas RSA para validação de assinaturas
+        //  Armazenar chaves públicas RSA para validação de assinaturas
         private static readonly Dictionary<int, RSACryptoServiceProvider> userPublicKeys = new Dictionary<int, RSACryptoServiceProvider>();
         private static readonly object publicKeysLock = new object();
 
@@ -91,16 +91,16 @@ namespace Server
         public static void WriteSecurityLog(string operation, string details, int clientId = -1)
         {
             string clientInfo = clientId > 0 ? $"Cliente {clientId}" : "Sistema";
-            WriteLog($"🔐 {clientInfo}: {operation} - {details}", "SECURITY");
+            WriteLog($" {clientInfo}: {operation} - {details}", "SECURITY");
         }
 
         /// <summary>
-        /// NOVO: Registo específico para assinaturas digitais
+        ///  Registo específico para assinaturas digitais
         /// </summary>
         public static void WriteSignatureLog(string operation, string details, int userId = -1)
         {
             string userInfo = userId > 0 ? $"Utilizador {userId}" : "Sistema";
-            WriteLog($"🔏 {userInfo}: {operation} - {details}", "SIGNATURE");
+            WriteLog($" {userInfo}: {operation} - {details}", "SIGNATURE");
         }
 
         /// <summary>
@@ -146,7 +146,7 @@ namespace Server
         }
 
         /// <summary>
-        /// NOVO: Registar chave pública RSA de um utilizador para validação de assinaturas
+        ///  Registar chave pública RSA de um utilizador para validação de assinaturas
         /// </summary>
         public static bool RegisterUserPublicKey(int userId, string publicKeyXml)
         {
@@ -178,7 +178,7 @@ namespace Server
         }
 
         /// <summary>
-        /// NOVO: Verificar assinatura digital de uma mensagem
+        ///  Verificar assinatura digital de uma mensagem
         /// </summary>
         public static bool VerifyMessageSignature(string message, string signatureBase64, int senderId)
         {
@@ -211,7 +211,7 @@ namespace Server
         }
 
         /// <summary>
-        /// NOVO: Obter todas as chaves públicas para enviar aos clientes
+        ///  Obter todas as chaves públicas para enviar aos clientes
         /// </summary>
         public static string GetAllPublicKeysForDistribution()
         {
@@ -260,7 +260,7 @@ namespace Server
             }
         }
 
-        // NOVO: Método para enviar mensagem assinada a todos os clientes (apenas após validação)
+        //  Método para enviar mensagem assinada a todos os clientes (apenas após validação)
         public static void BroadcastSignedMessage(string signedMessageData, int excludeClientId = -1)
         {
             lock (connectedClients)
@@ -295,7 +295,7 @@ namespace Server
         }
 
         /// <summary>
-        /// NOVO: Enviar chaves públicas para um cliente específico
+        ///  Enviar chaves públicas para um cliente específico
         /// </summary>
         public static void SendPublicKeysToClient(ClientHandler client)
         {
@@ -316,7 +316,7 @@ namespace Server
             try
             {
                 WriteLog("=== INICIANDO SERVIDOR SEGURO COM ASSINATURAS DIGITAIS ===", "STARTUP");
-                WriteLog("🔐🔏 Sistema de chat seguro com assinaturas digitais a iniciar...", "STARTUP");
+                WriteLog(" Sistema de chat seguro com assinaturas digitais a iniciar...", "STARTUP");
 
                 // Registo de informações do sistema
                 WriteLog($"Versão .NET Framework: {Environment.Version}", "SYSTEM");
@@ -366,7 +366,7 @@ namespace Server
                     TcpListener listener = new TcpListener(endpoint);
                     WriteLog($"A iniciar listener na porta {PORT}", "NETWORK");
                     listener.Start();
-                    WriteLog("🔐🔏 SERVIDOR SEGURO COM ASSINATURAS PRONTO - A aguardar ligações...", "STARTUP");
+                    WriteLog(" SERVIDOR SEGURO COM ASSINATURAS PRONTO - A aguardar ligações...", "STARTUP");
 
                     int clientCounter = 0;
 
@@ -392,7 +392,7 @@ namespace Server
             {
                 WriteLog("=== SERVIDOR SEGURO A ENCERRAR ===", "SHUTDOWN");
 
-                // NOVO: Limpar chaves RSA
+                //  Limpar chaves RSA
                 lock (publicKeysLock)
                 {
                     foreach (var keyPair in userPublicKeys)
@@ -682,7 +682,7 @@ namespace Server
                                         Server.WriteDetailedLog($"Dados simples recebidos do cliente {clientID}", $"Conteúdo: {decryptedData}", "DATA_PLAIN");
                                     }
 
-                                    // NOVO: Processar comandos especiais para assinaturas
+                                    //  Processar comandos especiais para assinaturas
                                     if (decryptedData.StartsWith("REGISTER_SIGNATURE_KEY:"))
                                     {
                                         // Comando para registar chave pública para assinaturas
@@ -789,7 +789,7 @@ namespace Server
                                             }
 
                                             // Avisar outros clientes que este utilizador entrou
-                                            Server.BroadcastMessage($"🔐🔏 !!! {username} entrou no chat seguro com assinaturas !!!", clientID);
+                                            Server.BroadcastMessage($" !!! {username} entrou no chat!!!", clientID);
                                         }
                                         else
                                         {
@@ -979,7 +979,7 @@ namespace Server
                 // Notificar outros utilizadores que este saiu (se estava autenticado)
                 if (_userId > 0 && _username != null)
                 {
-                    Server.BroadcastMessage($"🔐🔏 *** {_username} saiu do chat seguro ***");
+                    Server.BroadcastMessage($" *** {_username} saiu do chat seguro ***");
                 }
 
                 try
@@ -995,7 +995,7 @@ namespace Server
         }
 
         /// <summary>
-        /// NOVO: Processar registo de chave pública para assinaturas
+        ///  Processar registo de chave pública para assinaturas
         /// </summary>
         private void ProcessSignatureKeyRegistration(string data, NetworkStream networkStream, ProtocolSI protocolSI)
         {
@@ -1050,7 +1050,7 @@ namespace Server
         }
 
         /// <summary>
-        /// NOVO: Processar pedido de chaves públicas
+        ///  Processar pedido de chaves públicas
         /// </summary>
         private void ProcessPublicKeysRequest(NetworkStream networkStream, ProtocolSI protocolSI)
         {
@@ -1074,7 +1074,7 @@ namespace Server
         }
 
         /// <summary>
-        /// NOVO: Processar mensagem assinada digitalmente
+        ///  Processar mensagem assinada digitalmente
         /// </summary>
         private void ProcessSignedMessage(string data, NetworkStream networkStream, ProtocolSI protocolSI)
         {
@@ -1141,7 +1141,7 @@ namespace Server
         }
 
         /// <summary>
-        /// NOVO: Fazer broadcast das chaves públicas actualizadas para todos os clientes
+        ///  Fazer broadcast das chaves públicas actualizadas para todos os clientes
         /// </summary>
         public void BroadcastUpdatedPublicKeys()
         {

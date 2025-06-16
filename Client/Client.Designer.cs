@@ -30,6 +30,7 @@
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Client));
             this.panelMain = new System.Windows.Forms.Panel();
+            this.lblOnlineIndicator = new System.Windows.Forms.Label();
             this.panelChat = new System.Windows.Forms.Panel();
             this.txtChatBox = new System.Windows.Forms.TextBox();
             this.lblChatTitle = new System.Windows.Forms.Label();
@@ -40,7 +41,6 @@
             this.panelHeader = new System.Windows.Forms.Panel();
             this.btnAddUser = new System.Windows.Forms.Button();
             this.panelUserInfo = new System.Windows.Forms.Panel();
-            this.lblOnlineIndicator = new System.Windows.Forms.Label();
             this.labelUserName = new System.Windows.Forms.Label();
             this.lblWelcome = new System.Windows.Forms.Label();
             this.panelMain.SuspendLayout();
@@ -63,6 +63,17 @@
             this.panelMain.Padding = new System.Windows.Forms.Padding(20);
             this.panelMain.Size = new System.Drawing.Size(900, 600);
             this.panelMain.TabIndex = 0;
+            // 
+            // lblOnlineIndicator
+            // 
+            this.lblOnlineIndicator.AutoSize = true;
+            this.lblOnlineIndicator.Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.lblOnlineIndicator.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(40)))), ((int)(((byte)(167)))), ((int)(((byte)(69)))));
+            this.lblOnlineIndicator.Location = new System.Drawing.Point(22, 4);
+            this.lblOnlineIndicator.Name = "lblOnlineIndicator";
+            this.lblOnlineIndicator.Size = new System.Drawing.Size(78, 13);
+            this.lblOnlineIndicator.TabIndex = 2;
+            this.lblOnlineIndicator.Text = "🟢 Conectado";
             // 
             // panelChat
             // 
@@ -198,17 +209,6 @@
             this.panelUserInfo.Name = "panelUserInfo";
             this.panelUserInfo.Size = new System.Drawing.Size(600, 50);
             this.panelUserInfo.TabIndex = 0;
-            // 
-            // lblOnlineIndicator
-            // 
-            this.lblOnlineIndicator.AutoSize = true;
-            this.lblOnlineIndicator.Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.lblOnlineIndicator.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(40)))), ((int)(((byte)(167)))), ((int)(((byte)(69)))));
-            this.lblOnlineIndicator.Location = new System.Drawing.Point(22, 4);
-            this.lblOnlineIndicator.Name = "lblOnlineIndicator";
-            this.lblOnlineIndicator.Size = new System.Drawing.Size(78, 13);
-            this.lblOnlineIndicator.TabIndex = 2;
-            this.lblOnlineIndicator.Text = "🟢 Conectado";
             // 
             // labelUserName
             // 
